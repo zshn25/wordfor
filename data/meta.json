@@ -1,0 +1,6 @@
+{
+  "count": 115904,
+  "dims": 384,
+  "dtype": "float16",
+  "model": "BAAI/bge-small-en-v1.5"
+}
