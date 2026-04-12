@@ -1,5 +1,5 @@
 /**
- * WordFor — Service Worker
+ * WordFor: Service Worker
  * Enables offline support and "Add to Home Screen" (PWA).
  *
  * Strategy:
@@ -8,7 +8,7 @@
  *   - Cross-origin (CDN libs): NOT intercepted.
  */
 
-const CACHE_NAME = "wordfor-v12";
+const CACHE_NAME = "wordfor-v13";
 
 const APP_SHELL = [
   "/",
@@ -41,7 +41,7 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch strategy — same-origin only
+// Fetch strategy: same-origin only
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
@@ -61,7 +61,7 @@ self.addEventListener("fetch", (event) => {
 
 function isDataFile(pathname) {
   if (pathname.startsWith("/data/") &&
-    (pathname.endsWith(".bin") || pathname.endsWith(".json") || pathname.endsWith(".txt"))) {
+    (pathname.endsWith(".bin") || pathname.endsWith(".json") || pathname.endsWith(".txt") || pathname.endsWith(".wasm") || pathname.endsWith(".safetensors"))) {
     return true;
   }
   if (pathname.startsWith("/models/") &&

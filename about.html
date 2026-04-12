@@ -5,8 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>About — WordFor | Reverse Dictionary</title>
-  <meta name="description" content="Learn how WordFor works — a free reverse dictionary powered by AI that runs entirely in your browser.">
+  <title>About: WordFor | Reverse Dictionary</title>
+  <meta name="description" content="Learn how WordFor works: a free reverse dictionary powered by AI that runs entirely in your browser.">
   <link rel="canonical" href="https://wordfor.xyz/about.html">
 
   <meta property="og:type" content="website">
@@ -43,14 +43,14 @@
       <h1 class="about-hero-title">Why I built this</h1>
       <div class="about-story">
         <p>
-          I'm <strong>Zeeshan</strong>. While writing — emails, papers, code comments, anything —
+          I'm <strong>Zeeshan</strong>. While writing: emails, papers, code comments, anything:
           I constantly run into the same problem: I <em>know</em> the word exists, I can describe
           exactly what it means, but I just can't recall it. So I'd open Google, type something
           like <em>"word for fear of being forgotten"</em>, scroll through SEO-stuffed listicles,
           and maybe find it five minutes later (it's <strong>athazagoraphobia</strong>, by the way).
         </p>
         <p>
-          I got tired of that loop and built <strong>WordFor</strong> — a reverse dictionary that
+          I got tired of that loop and built <strong>WordFor</strong>: a reverse dictionary that
           does one thing well: you describe a concept and it instantly gives you the word. No ads,
           no sign-ups, no tracking. The AI runs entirely in your browser, so your searches never
           leave your device.
@@ -96,14 +96,14 @@
           <div class="how-step-num">2</div>
           <div>
             <h3>Match</h3>
-            <p>A sentence-embedding AI model converts your description into a meaning vector and compares it against 110,000+ dictionary definitions using cosine similarity, boosted by keyword overlap.</p>
+            <p>A sentence-embedding AI model converts your description into a meaning vector and compares it against 175,000+ dictionary definitions using 1-bit binary scoring. On desktop, a two-stage pipeline narrows candidates via fast Hamming distance, then reranks the top 500 with int8 precision. On mobile, pure binary scoring keeps downloads small (~30 MB).</p>
           </div>
         </div>
         <div class="how-step">
           <div class="how-step-num">3</div>
           <div>
             <h3>Discover</h3>
-            <p>Get ranked results instantly. Everything runs in your browser — no data ever leaves your device.</p>
+            <p>Get ranked results instantly. Everything runs in your browser &mdash; no data ever leaves your device.</p>
           </div>
         </div>
       </div>
@@ -112,24 +112,12 @@
     <!-- Tech details -->
     <section class="about-section">
       <h2 class="about-section-title">Under the hood</h2>
-      <div class="tech-grid">
-        <div class="tech-card">
-          <h3>Full mode (desktop)</h3>
-          <p><a href="https://huggingface.co/MongoDB/mdbr-leaf-mt" target="_blank" rel="noopener">mdbr-leaf-mt</a> — a 22M-parameter sentence encoder running via <a href="https://huggingface.co/docs/transformers.js" target="_blank" rel="noopener">Transformers.js</a> / ONNX Runtime (WASM or WebGPU), using the <a href="https://huggingface.co/onnx-community/mdbr-leaf-mt-ONNX" target="_blank" rel="noopener">optimized ONNX conversion</a>. Uses asymmetric retrieval: definitions encoded at build time by the larger teacher model <a href="https://huggingface.co/mixedbread-ai/mxbai-embed-large-v1" target="_blank" rel="noopener">mxbai-embed-large-v1</a>.</p>
-        </div>
-        <div class="tech-card">
-          <h3>Lite mode</h3>
-          <p><a href="https://huggingface.co/minishlab/potion-base-8M" target="_blank" rel="noopener">potion-base-8M</a> — a Model2Vec static embedding model. Pure JS inference with no runtime dependencies, sub-1ms query speed, and lower memory usage. Used as fallback when the full model can&rsquo;t load, or via <code>?mode=lite</code>.</p>
-        </div>
-        <div class="tech-card">
-          <h3>Dictionary</h3>
-          <p><a href="https://en-word.net/" target="_blank" rel="noopener">Open English WordNet 2025+</a> — 120,000+ English definitions including proper nouns from Open English Namenet, pre-embedded offline and served as static binary files.</p>
-        </div>
-        <div class="tech-card">
-          <h3>Scoring</h3>
-          <p>Full mode: pure cosine similarity on bare definition embeddings. Lite mode: 70% cosine similarity + 30% keyword overlap. Full mode loads for all users; if it can't initialize on the device, it falls back to Lite with a notice.</p>
-        </div>
-      </div>
+      <p class="about-text">
+        WordFor uses a sentence-embedding AI model (<a href="https://huggingface.co/MongoDB/mdbr-leaf-mt" target="_blank" rel="noopener">mdbr-leaf-mt</a>) running via <a href="https://huggingface.co/docs/transformers.js" target="_blank" rel="noopener">Transformers.js</a> to convert your description into a meaning vector, then compares it against 175,000+ pre-embedded dictionary definitions using a two-stage binary + int8 scoring pipeline. A lighter <a href="https://huggingface.co/minishlab/potion-base-8M" target="_blank" rel="noopener">potion-base-8M</a> mode is available as fallback.
+      </p>
+      <p class="about-text" style="margin-top:12px">
+        For a deep dive into the architecture, scoring pipeline, and evaluation results, see the <a href="https://zshn25.github.io/wordfor-reverse-dictionary/" target="_blank" rel="noopener">blog post</a>.
+      </p>
     </section>
 
     <!-- API / Deep Linking -->
@@ -153,6 +141,22 @@
       </div>
     </section>
 
+    <!-- Licensing -->
+    <section class="about-section">
+      <h2 class="about-section-title">Licensing &amp; attribution</h2>
+      <p class="about-text">
+        WordFor&rsquo;s code is licensed under <a href="https://creativecommons.org/licenses/by-nc-nd/4.0/" target="_blank" rel="noopener">CC BY-NC-ND 4.0</a>.
+        The dictionary data comes from multiple sources with different licenses:
+      </p>
+      <ul class="about-list">
+        <li><strong>Open English WordNet 2025+</strong> &mdash; <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></li>
+        <li><strong>Webster&rsquo;s 1913 Dictionary</strong> &mdash; Public domain</li>
+        <li><strong>Moby Thesaurus</strong> &mdash; Public domain</li>
+        <li><strong>Wiktionary supplement</strong> (168K entries in <code>words_wiki.json</code>) &mdash; <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener">CC BY-SA 3.0</a>, sourced via <a href="https://kaikki.org/" target="_blank" rel="noopener">kaikki.org</a></li>
+        <li><strong>ConceptNet 5.7</strong> &mdash; <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a> (used at build time for quality signals only; not redistributed)</li>
+      </ul>
+    </section>
+
     <!-- Privacy -->
     <section class="about-section">
       <h2 class="about-section-title">Privacy</h2>
@@ -161,7 +165,7 @@
         and dictionary data are downloaded once and cached in your browser. Every search
         happens locally on your device. Your queries are never sent anywhere.
         We use <a href="https://www.goatcounter.com/" target="_blank" rel="noopener">GoatCounter</a> for privacy-friendly,
-        cookie-free page-view analytics — no personal data is collected.
+        cookie-free page-view analytics: no personal data is collected.
       </p>
     </section>
 
@@ -170,9 +174,24 @@
   <footer class="footer">
     <div class="container footer-inner">
       <p>WordFor &mdash; a free, open-source reverse dictionary. No tracking, no cookies, no server.</p>
-      <p class="footer-tech">Built by <a href="https://github.com/zshn25" target="_blank" rel="noopener">zshn25</a></p>
+      <p class="footer-tech">
+        Built by <a href="https://github.com/zshn25" target="_blank" rel="noopener">zshn25</a> &middot;
+        <a href="https://ko-fi.com/zshn25" target="_blank" rel="noopener" class="social-link donate-kofi">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.734 4.352.24 7.422-2.831 6.649-6.916zm-11.062 3.511c-1.246 1.453-4.011 3.976-4.011 3.976s-.121.119-.31.023c-.076-.057-.108-.09-.108-.09-.443-.441-3.368-3.049-4.034-3.954-.709-.965-1.041-2.7-.091-3.71.951-1.01 3.005-1.086 4.363.407 0 0 1.565-1.782 3.468-.963 1.904.82 1.832 3.011.723 4.311zm6.173.478c-.928.116-1.682.028-1.682.028V7.284h1.77s1.971.551 1.971 2.638c0 1.913-.985 2.667-2.059 3.015z"/></svg>
+          Ko-fi
+        </a>
+        <a href="https://liberapay.com/zshn25" target="_blank" rel="noopener" class="social-link donate-liberapay">
+          <svg width="14" height="14" viewBox="0 0 80 80" fill="currentColor"><path d="M26.5 65.5c-3.1-1-5.8-2.4-7.9-4.1-2.1-1.7-3.8-3.7-5-5.8-1.2-2.1-2-4.3-2.5-6.5-.5-2.2-.6-4.4-.4-6.4.2-2 .7-3.9 1.5-5.5.8-1.6 1.8-3 3.1-4.2 1.3-1.2 2.7-2.1 4.3-2.8 1.6-.7 3.3-1.1 5.1-1.2 1.8-.1 3.5.2 5.2.7l8.8-27.3h11.3L36.3 51.5c-.5 1.7-1.3 3.2-2.2 4.6-.9 1.4-2 2.5-3.3 3.5-1.3 1-2.7 1.7-4.3 2.3z"/></svg>
+          Liberapay
+        </a>
+      </p>
     </div>
   </footer>
+
+  <!-- Ko-fi floating button -->
+  <a href="https://ko-fi.com/zshn25" target="_blank" rel="noopener" class="kofi-fab" title="Support on Ko-fi" aria-label="Support on Ko-fi">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.734 4.352.24 7.422-2.831 6.649-6.916zm-11.062 3.511c-1.246 1.453-4.011 3.976-4.011 3.976s-.121.119-.31.023c-.076-.057-.108-.09-.108-.09-.443-.441-3.368-3.049-4.034-3.954-.709-.965-1.041-2.7-.091-3.71.951-1.01 3.005-1.086 4.363.407 0 0 1.565-1.782 3.468-.963 1.904.82 1.832 3.011.723 4.311zm6.173.478c-.928.116-1.682.028-1.682.028V7.284h1.77s1.971.551 1.971 2.638c0 1.913-.985 2.667-2.059 3.015z"/></svg>
+  </a>
 
   <script data-goatcounter="https://zshn25.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </body>

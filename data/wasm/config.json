@@ -1,0 +1,8 @@
+{
+  "model_type": "model2vec",
+  "architectures": [
+    "StaticModel"
+  ],
+  "normalize": true,
+  "embedding_dtype": "float16"
+}

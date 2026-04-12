@@ -1,0 +1,55 @@
+{
+  "build_date": "2026-04-13T17:35:25",
+  "total_entries": 175967,
+  "sources": {
+    "oewn": {
+      "name": "Open English WordNet 2025+",
+      "license": "CC-BY-4.0",
+      "url": "https://github.com/globalwordnet/english-wordnet/releases/download/2025-edition/english-wordnet-2025-plus-json.zip",
+      "entries": 110603,
+      "redistributed": true
+    },
+    "webster": {
+      "name": "Webster's Unabridged Dictionary (1913)",
+      "license": "Public Domain",
+      "url": "https://raw.githubusercontent.com/adambom/dictionary/master/dictionary.json",
+      "entries": 65364,
+      "redistributed": true
+    },
+    "moby": {
+      "name": "Moby Thesaurus",
+      "license": "Public Domain",
+      "url": "https://raw.githubusercontent.com/words/moby/master/words.txt",
+      "note": "Synonyms enrichment only",
+      "redistributed": true
+    },
+    "wiktionary": {
+      "name": "Wiktionary via kaikki.org",
+      "license": "CC-BY-SA-3.0",
+      "url": "https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl.gz",
+      "note": "Build-time cross-validation for words.json. Supplement entries redistributed separately in words_wiki.json under CC-BY-SA-3.0.",
+      "redistributed_in_words_json": false,
+      "redistributed_in_words_wiki_json": true
+    },
+    "conceptnet": {
+      "name": "ConceptNet 5.7",
+      "license": "CC-BY-SA-4.0",
+      "url": "https://s3.amazonaws.com/conceptnet/downloads/2019/edges/conceptnet-assertions-5.7.0.csv.gz",
+      "note": "Build-time quality signals only, NOT redistributed in words.json",
+      "redistributed": false
+    }
+  },
+  "quality_scoring": {
+    "beta": 0.1,
+    "components": [
+      "source_reliability",
+      "cross_source_agreement",
+      "definition_length",
+      "definition_specificity",
+      "definition_idf",
+      "compound_penalty",
+      "conceptnet_centrality",
+      "conceptnet_diversity"
+    ]
+  }
+}

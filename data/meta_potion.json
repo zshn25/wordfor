@@ -1,9 +1,9 @@
 {
-  "count": 115070,
+  "count": 175964,
   "dtype": "float16",
-  "source": "oewn-2025-plus",
+  "source": "oewn-2025-plus+webster1913+moby+wiktionary-qw",
   "dims": 256,
-  "model": "minishlab/potion-base-8M",
+  "model": "potion-base-8M-finetuned",
   "vocab_size": 29528,
   "matrix_rows": 29528,
   "matrix_cols": 256

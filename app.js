@@ -1,12 +1,15 @@
 /**
- * WordFor — Reverse Dictionary
+ * WordFor: Reverse Dictionary
  * © 2025 Zeeshan Khan Suri (zshn25). Licensed under CC-BY-NC-ND-4.0.
  *
  * Default:       mdbr-leaf-mt (query) + mxbai-embed-large (defs) via Transformers.js
+ *                Binary (ITQ) first-pass + int8 reranking for near-float32 quality at binary speed.
+ * Mobile:        Same model, but pure binary ITQ scoring (no int8 download, saves ~65 MB).
  * Lite fallback: potion-base-8M via pure JS static embeddings (sub-1ms)
  *
  * Lite mode activates automatically if the full model fails to load,
  * or manually via ?mode=lite in the URL.
+ * Binary-only scoring activates on mobile, or via ?scoring=binary.
  */
 
 // ---------------------------------------------------------------------------
@@ -15,12 +18,10 @@
 
 const DATA_ROOT      = "data";
 const TOP_K          = 30;
+const SHOW_K         = 9;
 const DEBOUNCE       = 400;
 const RATE_LIMIT_MAX = 15;
 const RATE_LIMIT_MS  = 10_000;
-
-const W_COSINE       = 0.70;
-const W_KEYWORD      = 0.30;
 
 const FULL_MODEL_ID  = "onnx-community/mdbr-leaf-mt-ONNX";
 const FULL_DIMS      = 384;
@@ -29,19 +30,6 @@ const LITE_DIMS      = 256;
 let MODE = null;
 let DIMS = null;
 let fullReady = false;
-
-// Stop words for keyword matching
-const STOP_WORDS = new Set([
-  "a","an","the","is","are","was","were","be","been","being","of","in","to",
-  "for","on","with","at","by","from","that","this","it","as","or","and","not",
-  "who","which","what","where","when","how","if","but","than","so","very",
-  "can","do","does","did","has","have","had","will","would","shall","should",
-  "may","might","could","about","into","through","during","before","after",
-  "above","below","between","under","again","further","then","once","all",
-  "each","every","both","few","more","most","other","some","such","no","nor",
-  "only","own","same","too","just","also","now","much","many","like","one",
-  "two","person","thing","something","someone","people",
-]);
 
 // ---------------------------------------------------------------------------
 // Float-16 → Float-32 lookup table  (65 536 entries ≈ 256 KB)
@@ -100,31 +88,6 @@ function setProgress(id, pct) {
 }
 
 // ---------------------------------------------------------------------------
-// Keyword scoring
-// ---------------------------------------------------------------------------
-
-function contentWords(text) {
-  return text.toLowerCase().match(/[a-z]{2,}/g)?.filter(w => !STOP_WORDS.has(w)) ?? [];
-}
-
-let defTokens;
-
-function buildDefTokenIndex() {
-  defTokens = new Array(wordEntries.length);
-  for (let i = 0; i < wordEntries.length; i++) {
-    const entry = wordEntries[i];
-    defTokens[i] = new Set(contentWords(entry.d + " " + entry.w.join(" ")));
-  }
-}
-
-function keywordScore(queryTokens, defTokenSet) {
-  if (queryTokens.length === 0) return 0;
-  let hits = 0;
-  for (const t of queryTokens) if (defTokenSet.has(t)) hits++;
-  return hits / queryTokens.length;
-}
-
-// ---------------------------------------------------------------------------
 // Device detection
 // ---------------------------------------------------------------------------
 
@@ -134,8 +97,56 @@ function shouldUseLiteMode() {
   return false;
 }
 
+/**
+ * Detect whether to use lightweight binary-only scoring (skip int8 download).
+ * Mobile devices get pure binary ITQ by default (saves ~65 MB).
+ * Override with ?scoring=rerank (force int8 reranking) or ?scoring=binary.
+ */
+function shouldUseBinaryOnly() {
+  const params = new URLSearchParams(location.search);
+  const scoring = params.get("scoring");
+  if (scoring === "binary") return true;
+  if (scoring === "rerank") return false;
+  // Auto-detect: mobile/tablet -> binary only
+  const ua = navigator.userAgent;
+  return /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua);
+}
+
+let BINARY_ONLY = false;  // set during init
+
 // ---------------------------------------------------------------------------
-// PotionModel — Pure JS Model2Vec inference
+// WasmPotionModel: model2vec-rs WASM inference (fast, uses real tokenizer)
+// ---------------------------------------------------------------------------
+
+class WasmPotionModel {
+  constructor(wasmModel) {
+    this._model = wasmModel;
+    this.dims = wasmModel.dims();
+  }
+
+  static async load(progressId) {
+    const root = `${DATA_ROOT}/wasm`;
+    const wasmModule = await import(`./${root}/model2vec_wasm.js`);
+    // Init WASM runtime (auto-fetches .wasm file relative to module URL)
+    await wasmModule.default();
+    // Fetch model files in parallel
+    const [tokBytes, modelBytes, cfgBytes] = await Promise.all([
+      fetch(`${root}/tokenizer.json`).then(r => r.arrayBuffer()).then(b => new Uint8Array(b)),
+      fetchWithProgress(`${root}/model.safetensors`, progressId)
+        .then(buf => new Uint8Array(buf)),
+      fetch(`${root}/config.json`).then(r => r.arrayBuffer()).then(b => new Uint8Array(b)),
+    ]);
+    const model = new wasmModule.Model(tokBytes, modelBytes, cfgBytes);
+    return new WasmPotionModel(model);
+  }
+
+  encode(text) {
+    return this._model.encode_single(text);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PotionModel: Pure JS Model2Vec inference (fallback)
 // ---------------------------------------------------------------------------
 
 class PotionModel {
@@ -221,14 +232,34 @@ let potionModel;
 let wordEntries;
 
 // Potion int8 embeddings (lite mode scoring)
-let potionEmbInt8;      // Uint8Array  — int8 quantized potion embeddings
-let potionRangeMin;     // Float32Array(256) — per-dim min
-let potionRangeScale;   // Float32Array(256) — per-dim range
+let potionEmbInt8;      // Uint8Array : int8 quantized potion embeddings
+let potionRangeMin;     // Float32Array(256): per-dim min
+let potionRangeScale;   // Float32Array(256): per-dim range
 
-// Full-mode int8 embeddings
-let fullEmbInt8;        // Uint8Array  — int8 quantized full embeddings
-let fullRangeMin;       // Float32Array(384) — per-dim min
-let fullRangeScale;     // Float32Array(384) — per-dim range
+// Full-mode int8 embeddings (for reranking stage 2)
+let fullEmbInt8;        // Uint8Array : int8 quantized full embeddings
+let fullRangeMin;       // Float32Array(384): per-dim min
+let fullRangeScale;     // Float32Array(384): per-dim range
+
+// Full-mode binary (1-bit) embeddings with ITQ rotation (primary scoring)
+const FULL_BINARY_BYTES = FULL_DIMS / 8;  // 384 / 8 = 48 bytes per entry
+let fullEmbBinary;      // Uint8Array : packed binary embeddings (ITQ-rotated)
+let fullBinaryReady = false;
+let itqMean;            // Float32Array(384): ITQ centering vector
+let itqR;               // Float32Array(384*384): ITQ rotation matrix (flattened, row-major)
+let itqReady = false;   // true when ITQ calibration is loaded
+const RERANK_K = 500;   // number of binary candidates to rerank with int8
+
+// Wiktionary supplement (CC-BY-SA, loaded lazily)
+let wikiEntries;         // Array: words_wiki.json entries
+let wikiEmbInt8;         // Uint8Array : int8 wiki embeddings (full-mode)
+let wikiRangeMin;        // Float32Array(384): per-dim min
+let wikiRangeScale;      // Float32Array(384): per-dim range
+let wikiEmbBinary;       // Uint8Array : binary wiki embeddings
+let wikiPotionInt8;      // Uint8Array : potion wiki embeddings
+let wikiPotionRangeMin;  // Float32Array(256)
+let wikiPotionRangeScale;// Float32Array(256)
+let wikiReady = false;
 
 // ---------------------------------------------------------------------------
 // Transformers.js loader
@@ -253,7 +284,7 @@ async function loadTransformers() {
 }
 
 // ---------------------------------------------------------------------------
-// Data loading (shared by both modes)
+// Data loading
 // ---------------------------------------------------------------------------
 
 async function fetchWithProgress(url, progressId) {
@@ -276,23 +307,20 @@ async function fetchWithProgress(url, progressId) {
   return buf.buffer;
 }
 
+async function loadWordList() {
+  addProgressRow("words", "Word list (~18 MB)");
+  const res = await fetch(`${DATA_ROOT}/words.json`);
+  setProgress("words", 50);
+  wordEntries = await res.json();
+  setProgress("words", 100);
+}
+
 async function loadPotionData() {
   addProgressRow("matrix", "Embedding model (~15 MB)");
-  addProgressRow("emb",    "Dictionary vectors (~28 MB)");
-  addProgressRow("words",  "Word list + vocab (~12 MB)");
-  $loaderNote.textContent = $loaderNote.textContent || "First visit downloads ~55 MB (cached for future visits)";
+  addProgressRow("emb",    "Dictionary vectors (~43 MB)");
+  $loaderNote.textContent = $loaderNote.textContent || "First visit downloads ~76 MB (cached for future visits)";
 
-  const vocabPromise = fetch(`${DATA_ROOT}/vocab.txt`).then(async r => {
-    const lines = (await r.text()).split(/\r?\n/);
-    const map = new Map();
-    for (let i = 0; i < lines.length; i++) if (lines[i] !== "") map.set(lines[i], i);
-    setProgress("words", 50);
-    return map;
-  });
-
-  const matrixPromise = fetchWithProgress(`${DATA_ROOT}/potion_matrix.bin`, "matrix")
-    .then(buf => new Uint16Array(buf));
-
+  // Shared data needed regardless of WASM or JS model
   const embPromise = fetchWithProgress(`${DATA_ROOT}/embeddings_potion_int8.bin`, "emb")
     .then(buf => { potionEmbInt8 = new Uint8Array(buf); });
 
@@ -303,15 +331,27 @@ async function loadPotionData() {
       potionRangeScale = data.subarray(LITE_DIMS, LITE_DIMS * 2);
     });
 
-  const wordsPromise = fetch(`${DATA_ROOT}/words.json`).then(async r => {
-    wordEntries = await r.json();
-    setProgress("words", 100);
-  });
+  // Try WASM model first (faster inference, real tokenizer)
+  let wasmOk = false;
+  const wasmPromise = WasmPotionModel.load("matrix")
+    .then(m => { potionModel = m; wasmOk = true; })
+    .catch(err => { console.warn("WASM model failed, falling back to pure JS:", err); });
 
-  const [vocabMap, matrixRaw] = await Promise.all([
-    vocabPromise, matrixPromise, embPromise, rangesPromise, wordsPromise,
-  ]);
-  potionModel = new PotionModel(vocabMap, matrixRaw, LITE_DIMS);
+  await Promise.all([wasmPromise, embPromise, rangesPromise]);
+
+  if (!wasmOk) {
+    // Fallback: load pure JS PotionModel (vocab + f16 matrix)
+    const vocabPromise = fetch(`${DATA_ROOT}/vocab.txt`).then(async r => {
+      const lines = (await r.text()).split(/\r?\n/);
+      const map = new Map();
+      for (let i = 0; i < lines.length; i++) if (lines[i] !== "") map.set(lines[i], i);
+      return map;
+    });
+    const matrixPromise = fetchWithProgress(`${DATA_ROOT}/potion_matrix.bin`, "matrix")
+      .then(buf => new Uint16Array(buf));
+    const [vocabMap, matrixRaw] = await Promise.all([vocabPromise, matrixPromise]);
+    potionModel = new PotionModel(vocabMap, matrixRaw, LITE_DIMS);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -326,23 +366,56 @@ function timeout(ms, promise) {
 }
 
 async function loadFullModel() {
-  addProgressRow("tf",    "AI model (~30 MB)");
-  addProgressRow("femb",  "Full vectors (~42 MB)");
+  addProgressRow("tf",    "AI model (~22 MB)");
+  if (!BINARY_ONLY) {
+    addProgressRow("femb",  "Dictionary vectors (~73 MB)");
+  } else {
+    addProgressRow("femb",  "Dictionary vectors (~9 MB)");
+  }
 
   const tfPromise = loadTransformers();
 
-  const int8Promise = fetchWithProgress(`${DATA_ROOT}/embeddings_int8.bin`, "femb")
-    .then(buf => new Uint8Array(buf));
-  const rangesPromise = fetch(`${DATA_ROOT}/embeddings_ranges.bin`)
-    .then(r => r.arrayBuffer()).then(buf => new Float32Array(buf));
+  // Binary embeddings (~8 MB): primary scoring (fast Hamming)
+  const binaryPromise = fetch(`${DATA_ROOT}/embeddings_binary.bin`)
+    .then(r => r.ok ? r.arrayBuffer() : null)
+    .then(buf => buf ? new Uint8Array(buf) : null)
+    .catch(() => null);
+
+  // ITQ calibration (~577 KB): rotation matrix for binary scoring
+  const itqPromise = fetch(`${DATA_ROOT}/embeddings_itq.bin`)
+    .then(r => r.ok ? r.arrayBuffer() : null)
+    .catch(() => null);
+
+  // Int8 embeddings (~65 MB): used for reranking binary candidates
+  // Skipped in binary-only mode (mobile) to save bandwidth
+  let int8Promise, rangesPromise;
+  if (!BINARY_ONLY) {
+    int8Promise = fetchWithProgress(`${DATA_ROOT}/embeddings_int8.bin`, "femb")
+      .then(buf => new Uint8Array(buf));
+    rangesPromise = fetch(`${DATA_ROOT}/embeddings_ranges.bin`)
+      .then(r => r.arrayBuffer()).then(buf => new Float32Array(buf));
+  } else {
+    setProgress("femb", 100);
+  }
 
   const { AutoModel, AutoTokenizer, device } = await tfPromise;
   setProgress("tf", 40);
 
-  const [tokenizer, model] = await Promise.all([
-    AutoTokenizer.from_pretrained(FULL_MODEL_ID),
-    timeout(90_000, AutoModel.from_pretrained(FULL_MODEL_ID, { dtype: "q4f16", device })),
-  ]);
+  // Try q8 first; on iOS Safari WASM OOM, fall back to q4 with reduced memory
+  let tokenizer, model;
+  tokenizer = await AutoTokenizer.from_pretrained(FULL_MODEL_ID);
+  try {
+    model = await timeout(90_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
+      dtype: "q8", device,
+      session_options: { enableCpuMemArena: false },
+    }));
+  } catch (e) {
+    console.warn("q8 model failed, trying q4 with reduced memory:", e.message);
+    model = await timeout(90_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
+      dtype: "q4", device,
+      session_options: { enableCpuMemArena: false },
+    }));
+  }
   fullTokenizer = tokenizer;
   fullModel = model;
   setProgress("tf", 80);
@@ -352,13 +425,108 @@ async function loadFullModel() {
   await timeout(30_000, fullModel(warmInput));
   setProgress("tf", 100);
 
-  const [int8Data, rangesData] = await Promise.all([int8Promise, rangesPromise]);
-  fullEmbInt8    = int8Data;
-  fullRangeMin   = rangesData.subarray(0, FULL_DIMS);
-  fullRangeScale = rangesData.subarray(FULL_DIMS, FULL_DIMS * 2);
+  // Load binary + ITQ calibration
+  const binaryData = await binaryPromise;
+  if (binaryData) {
+    fullEmbBinary = binaryData;
+    fullBinaryReady = true;
+  }
+
+  const itqData = await itqPromise;
+  if (itqData) {
+    const itqFloat = new Float32Array(itqData);
+    itqMean = itqFloat.subarray(0, FULL_DIMS);
+    itqR = itqFloat.subarray(FULL_DIMS, FULL_DIMS + FULL_DIMS * FULL_DIMS);
+    itqReady = true;
+  }
+
+  // Load int8 embeddings (for reranking): skipped in binary-only mode
+  if (!BINARY_ONLY) {
+    try {
+      const [int8Data, rangesData] = await Promise.all([int8Promise, rangesPromise]);
+      fullEmbInt8    = int8Data;
+      fullRangeMin   = rangesData.subarray(0, FULL_DIMS);
+      fullRangeScale = rangesData.subarray(FULL_DIMS, FULL_DIMS * 2);
+    } catch (e) {
+      console.warn("Int8 embeddings failed, using binary-only scoring:", e.message);
+    }
+  }
 
   fullReady = true;
   DIMS = FULL_DIMS;
+}
+
+// ---------------------------------------------------------------------------
+// Wiktionary supplement loader (lazy, after main app is ready)
+// ---------------------------------------------------------------------------
+
+async function loadWikiData() {
+  try {
+    // Load word entries
+    const wordsRes = await fetch(`${DATA_ROOT}/words_wiki.json`);
+    if (!wordsRes.ok) return;
+    wikiEntries = await wordsRes.json();
+    if (!wikiEntries || wikiEntries.length === 0) return;
+
+    const wikiCount = wikiEntries.length;
+
+    // Load embeddings in parallel based on mode
+    const promises = [];
+
+    if (MODE === "full" || fullReady) {
+      // Full-mode wiki: binary for first pass, int8 for reranking (skip int8 on BINARY_ONLY)
+      promises.push(
+        fetch(`${DATA_ROOT}/embeddings_wiki_binary.bin`)
+          .then(r => r.ok ? r.arrayBuffer() : null)
+          .then(buf => { if (buf) wikiEmbBinary = new Uint8Array(buf); })
+          .catch(() => {})
+      );
+      if (!BINARY_ONLY) {
+        promises.push(
+          fetch(`${DATA_ROOT}/embeddings_wiki_int8.bin`)
+            .then(r => r.ok ? r.arrayBuffer() : null)
+            .then(buf => { if (buf) wikiEmbInt8 = new Uint8Array(buf); })
+            .catch(() => {}),
+          fetch(`${DATA_ROOT}/embeddings_wiki_ranges.bin`)
+            .then(r => r.ok ? r.arrayBuffer() : null)
+            .then(buf => {
+              if (buf) {
+                const data = new Float32Array(buf);
+                wikiRangeMin   = data.subarray(0, FULL_DIMS);
+                wikiRangeScale = data.subarray(FULL_DIMS, FULL_DIMS * 2);
+              }
+            })
+            .catch(() => {})
+        );
+      }
+    }
+
+    // Potion wiki embeddings (only for lite mode)
+    if (MODE === "lite") {
+      promises.push(
+        fetch(`${DATA_ROOT}/embeddings_wiki_potion_int8.bin`)
+          .then(r => r.ok ? r.arrayBuffer() : null)
+          .then(buf => { if (buf) wikiPotionInt8 = new Uint8Array(buf); })
+          .catch(() => {}),
+        fetch(`${DATA_ROOT}/embeddings_wiki_potion_ranges.bin`)
+          .then(r => r.ok ? r.arrayBuffer() : null)
+          .then(buf => {
+            if (buf) {
+              const data = new Float32Array(buf);
+              wikiPotionRangeMin   = data.subarray(0, LITE_DIMS);
+              wikiPotionRangeScale = data.subarray(LITE_DIMS, LITE_DIMS * 2);
+            }
+          })
+          .catch(() => {})
+      );
+    }
+
+    await Promise.all(promises);
+    wikiReady = true;
+    console.log(`Wiki supplement loaded: ${wikiCount} entries`);
+  } catch (e) {
+    console.warn("Wiki supplement failed to load:", e.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -368,25 +536,28 @@ async function loadFullModel() {
 async function init() {
   MODE = shouldUseLiteMode() ? "lite" : "full";
   DIMS = MODE === "full" ? FULL_DIMS : LITE_DIMS;
+  BINARY_ONLY = MODE === "full" && shouldUseBinaryOnly();
   let liteFallback = false;
 
   if (MODE === "full") {
-    // Full mode: load everything during the loading screen
-    // Potion data + full model in parallel
-    $loaderNote.textContent = "First visit downloads ~120 MB (cached for future visits)";
-    const potionPromise = loadPotionData();
+    $loaderNote.textContent = BINARY_ONLY
+      ? "First visit downloads ~30 MB (cached for future visits)"
+      : "First visit downloads ~95 MB (cached for future visits)";
+    const wordsPromise = loadWordList();
     const fullPromise = loadFullModel().catch(err => {
       console.warn("Full model load failed, falling back to lite:", err.message);
       MODE = "lite";
       DIMS = LITE_DIMS;
       liteFallback = true;
     });
-    await Promise.all([potionPromise, fullPromise]);
+    await Promise.all([wordsPromise, fullPromise]);
+    // If full model failed, load potion as fallback
+    if (liteFallback) await loadPotionData();
   } else {
-    await loadPotionData();
+    const wordsPromise = loadWordList();
+    const potionPromise = loadPotionData();
+    await Promise.all([wordsPromise, potionPromise]);
   }
-
-  buildDefTokenIndex();
 
   // Show app
   $loader.classList.add("done");
@@ -400,6 +571,9 @@ async function init() {
   // Deep link
   const q = new URLSearchParams(location.search).get("q");
   if (q) { $input.value = q; search(q); }
+
+  // Lazy-load Wiktionary supplement (non-blocking, enhances results silently)
+  loadWikiData().catch(e => console.warn("Wiki load:", e.message));
 }
 
 // ---------------------------------------------------------------------------
@@ -411,10 +585,12 @@ function showModeBadge() {
   badge.className = "mode-badge";
   badge.id = "mode-badge";
   const isLite = MODE === "lite";
-  badge.textContent = isLite ? "Lite" : "Full";
+  badge.textContent = isLite ? "Lite" : BINARY_ONLY ? "Full (binary)" : "Full";
   badge.title = isLite
     ? "Lite mode (potion-base-8M). Add ?mode=full for higher quality."
-    : "Full mode (mdbr-leaf-mt). Add ?mode=lite for lower memory.";
+    : BINARY_ONLY
+    ? "Full mode (mdbr-leaf-mt). Binary-only scoring (mobile). Add ?scoring=rerank for higher quality."
+    : "Full mode (mdbr-leaf-mt). Binary+rerank scoring. Add ?mode=lite for lower memory.";
   document.querySelector(".brand")?.appendChild(badge);
 }
 
@@ -494,62 +670,321 @@ function scoreInt8(qvec, embData, rangeMin, rangeScale, dims, count, out) {
 }
 
 // ---------------------------------------------------------------------------
+// Binary (1-bit) Hamming distance scoring
+// ---------------------------------------------------------------------------
+
+// Popcount lookup for 8-bit values
+const POPCNT8 = new Uint8Array(256);
+for (let i = 0; i < 256; i++) {
+  let n = i;
+  n = n - ((n >> 1) & 0x55);
+  n = (n & 0x33) + ((n >> 2) & 0x33);
+  POPCNT8[i] = (n + (n >> 4)) & 0x0f;
+}
+
+/**
+ * Score entries by Hamming similarity between query sign bits and packed binary embeddings.
+ * Hamming similarity = (dims - hamming_distance) / dims, mapped to [-1, 1] range.
+ * @param {Float32Array} qvec - query vector (float32, FULL_DIMS)
+ * @param {Uint8Array} binData - packed binary embeddings (N * bytesPerEntry)
+ * @param {number} bytesPerEntry - FULL_DIMS / 8
+ * @param {number} count - number of entries
+ * @param {Float32Array} out - output scores
+ */
+function scoreHamming(qvec, binData, bytesPerEntry, count, out) {
+  // Apply ITQ rotation if available, then pack query sign bits
+  let rotated = qvec;
+  if (itqReady) {
+    rotated = new Float32Array(FULL_DIMS);
+    for (let d = 0; d < FULL_DIMS; d++) {
+      let sum = 0;
+      for (let k = 0; k < FULL_DIMS; k++) sum += (qvec[k] - itqMean[k]) * itqR[k * FULL_DIMS + d];
+      rotated[d] = sum;
+    }
+  }
+  const qBin = new Uint8Array(bytesPerEntry);
+  for (let b = 0; b < bytesPerEntry; b++) {
+    let byte = 0;
+    for (let bit = 0; bit < 8; bit++) {
+      if (rotated[b * 8 + bit] > 0) byte |= (128 >> bit);
+    }
+    qBin[b] = byte;
+  }
+  const dims = bytesPerEntry * 8;
+  for (let i = 0; i < count; i++) {
+    const base = i * bytesPerEntry;
+    let dist = 0;
+    for (let b = 0; b < bytesPerEntry; b++) {
+      dist += POPCNT8[qBin[b] ^ binData[base + b]];
+    }
+    // Map to [-1, 1]: agreement = (dims - 2*dist) / dims
+    out[i] = (dims - 2 * dist) / dims;
+  }
+}
+
+/**
+ * Two-stage scoring: binary Hamming first-pass, then int8 dot product reranking.
+ * Returns float32 scores for all entries (non-candidates get -Infinity).
+ */
+function scoreBinaryRerank(qvec, count, out) {
+  // Stage 1: Binary Hamming over all entries
+  const hamming = new Float32Array(count);
+  scoreHamming(qvec, fullEmbBinary, FULL_BINARY_BYTES, count, hamming);
+
+  // Stage 2: Find top RERANK_K candidates by Hamming score
+  const topIdx = new Int32Array(count);
+  for (let i = 0; i < count; i++) topIdx[i] = i;
+  // Partial sort: partition around RERANK_K-th element
+  const k = Math.min(RERANK_K, count);
+  nthElement(topIdx, hamming, 0, count - 1, k);
+
+  // Rerank top candidates with int8 dot product
+  const qScaled = new Float32Array(FULL_DIMS);
+  let qOffset = 0;
+  for (let d = 0; d < FULL_DIMS; d++) {
+    qScaled[d] = qvec[d] * fullRangeScale[d] / 255;
+    qOffset += qvec[d] * fullRangeMin[d];
+  }
+
+  // Fill all with -Infinity, then overwrite reranked candidates
+  for (let i = 0; i < count; i++) out[i] = -Infinity;
+  for (let j = 0; j < k; j++) {
+    const idx = topIdx[j];
+    let dot = qOffset;
+    const base = idx * FULL_DIMS;
+    for (let d = 0; d < FULL_DIMS; d++) dot += qScaled[d] * fullEmbInt8[base + d];
+    out[idx] = dot;
+  }
+}
+
+/**
+ * In-place partial sort: rearranges arr[lo..hi] so that the top-k elements
+ * (by descending scores[arr[i]]) are in arr[lo..lo+k-1].
+ * Quickselect (Hoare partition).
+ */
+function nthElement(arr, scores, lo, hi, k) {
+  while (lo < hi) {
+    const pivotScore = scores[arr[lo + ((hi - lo) >> 1)]];
+    let i = lo, j = hi;
+    while (i <= j) {
+      while (scores[arr[i]] > pivotScore) i++;
+      while (scores[arr[j]] < pivotScore) j--;
+      if (i <= j) { const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp; i++; j--; }
+    }
+    if (j - lo + 1 >= k) { hi = j; }
+    else if (i - lo <= k) { k -= (i - lo); lo = i; }
+    else break;
+  }
+}
+
+/**
+ * Two-stage scoring for wiki entries: binary Hamming + int8 reranking.
+ */
+function scoreBinaryRerankWiki(qvec, count, out) {
+  const hamming = new Float32Array(count);
+  scoreHamming(qvec, wikiEmbBinary, FULL_BINARY_BYTES, count, hamming);
+
+  const topIdx = new Int32Array(count);
+  for (let i = 0; i < count; i++) topIdx[i] = i;
+  const k = Math.min(RERANK_K, count);
+  nthElement(topIdx, hamming, 0, count - 1, k);
+
+  const qScaled = new Float32Array(FULL_DIMS);
+  let qOffset = 0;
+  for (let d = 0; d < FULL_DIMS; d++) {
+    qScaled[d] = qvec[d] * wikiRangeScale[d] / 255;
+    qOffset += qvec[d] * wikiRangeMin[d];
+  }
+
+  for (let i = 0; i < count; i++) out[i] = -Infinity;
+  for (let j = 0; j < k; j++) {
+    const idx = topIdx[j];
+    let dot = qOffset;
+    const base = idx * FULL_DIMS;
+    for (let d = 0; d < FULL_DIMS; d++) dot += qScaled[d] * wikiEmbInt8[base + d];
+    out[idx] = dot;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Search
 // ---------------------------------------------------------------------------
 
 async function search(query) {
   query = query.trim();
   if (!query) { $results.innerHTML = ""; $status.textContent = ""; return; }
-  if (isRateLimited()) { $status.textContent = "Too many searches — please wait a moment."; return; }
+  if (isRateLimited()) { $status.textContent = "Too many searches: please wait a moment."; return; }
 
-  const qTokens = contentWords(query);
   const count   = wordEntries.length;
 
-  // Instant potion preview (full mode: show while model runs)
-  if (fullReady && potionModel && potionEmbInt8) {
-    $status.textContent = "Searching\u2026";
-    const potionVec = potionModel.encode(query);
-    const preview = new Float32Array(count);
-    scoreInt8(potionVec, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, count, preview);
-    for (let i = 0; i < count; i++) {
-      preview[i] = W_COSINE * preview[i] + W_KEYWORD * keywordScore(qTokens, defTokens[i]);
-    }
-    render(topK(preview, count), query);
-    $status.textContent = "Refining\u2026";
-  } else {
-    $status.textContent = "Searching\u2026";
-  }
+  // Instant preview removed: potion no longer loaded in full mode
+  $status.textContent = "Searching\u2026";
 
   const qvec   = await embedQuery(query);
   const scored = new Float32Array(count);
 
   if (fullReady) {
-    scoreInt8(qvec, fullEmbInt8, fullRangeMin, fullRangeScale, FULL_DIMS, count, scored);
+    if (fullBinaryReady && fullEmbInt8) {
+      // Best: binary first-pass + int8 reranking (near float32 quality, binary speed)
+      scoreBinaryRerank(qvec, count, scored);
+    } else if (fullBinaryReady) {
+      // Binary-only fallback (int8 failed to load)
+      scoreHamming(qvec, fullEmbBinary, FULL_BINARY_BYTES, count, scored);
+    } else {
+      // No binary data: pure int8 fallback
+      scoreInt8(qvec, fullEmbInt8, fullRangeMin, fullRangeScale, FULL_DIMS, count, scored);
+    }
   } else {
-    // Lite: int8 cosine + keyword
     scoreInt8(qvec, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, count, scored);
-    for (let i = 0; i < count; i++) {
-      scored[i] = W_COSINE * scored[i] + W_KEYWORD * keywordScore(qTokens, defTokens[i]);
+  }
+  applyQualityWeights(scored, count);
+
+  // Score wiki entries if loaded
+  let wikiScored = null;
+  if (wikiReady && wikiEntries && wikiEntries.length > 0) {
+    const wc = wikiEntries.length;
+    wikiScored = new Float32Array(wc);
+    if (fullReady) {
+      if (fullBinaryReady && wikiEmbBinary && wikiEmbInt8 && wikiRangeMin) {
+        // Binary rerank for wiki
+        scoreBinaryRerankWiki(qvec, wc, wikiScored);
+      } else if (wikiEmbBinary && fullBinaryReady) {
+        scoreHamming(qvec, wikiEmbBinary, FULL_BINARY_BYTES, wc, wikiScored);
+      } else if (wikiEmbInt8 && wikiRangeMin) {
+        scoreInt8(qvec, wikiEmbInt8, wikiRangeMin, wikiRangeScale, FULL_DIMS, wc, wikiScored);
+      }
+    } else if (wikiPotionInt8 && wikiPotionRangeMin && potionModel) {
+      const potionVec = potionModel.encode(query);
+      scoreInt8(potionVec, wikiPotionInt8, wikiPotionRangeMin, wikiPotionRangeScale, LITE_DIMS, wc, wikiScored);
     }
   }
 
-  render(topK(scored, count), query);
+  render(topK(scored, count, wikiScored), query);
 }
 
-function topK(scored, count) {
-  const indices = Array.from({ length: count }, (_, i) => i);
-  indices.sort((a, b) => scored[b] - scored[a]);
-  const seen = new Set();
-  const deduped = [];
-  for (const idx of indices) {
-    if (deduped.length >= TOP_K) break;
-    const entry = wordEntries[idx];
-    const primary = entry.w[0].toLowerCase();
-    if (seen.has(primary)) continue;
-    seen.add(primary);
-    deduped.push({ ...entry, score: scored[idx] });
+/** Multiply scores by per-entry quality weights (if available). */
+function applyQualityWeights(scored, count) {
+  for (let i = 0; i < count; i++) {
+    const q = wordEntries[i].q;
+    if (q !== undefined) scored[i] *= q;
   }
-  return deduped;
+}
+
+/**
+ * Simple suffix-stripping stemmer for grouping morphological variants.
+ * Returns a stem if the word is long enough (5+ chars after stripping),
+ * or null if the word is too short to safely stem.
+ */
+function stemWord(word) {
+  const w = word.toLowerCase().replace(/[^a-z]/g, "");
+  if (w.length < 7) return null;
+  // Strip common suffixes (longest first to avoid partial matches)
+  const suffixes = [
+    "ically", "ation", "ition", "phobic", "phobia", "mania",
+    "ness", "ment", "ible", "able",
+    "ical", "ious", "eous",
+    "ist", "ism", "ous", "ive", "ful", "ing", "ant", "ent", "ial",
+    "ic", "al", "ly", "er", "ed", "ia",
+  ];
+  for (const suf of suffixes) {
+    if (w.endsWith(suf) && w.length - suf.length >= 5) {
+      return w.slice(0, w.length - suf.length);
+    }
+  }
+  return null;
+}
+
+function topK(scored, count, wikiScored) {
+  // Get top candidates from main pool
+  const CANDIDATE_LIMIT = TOP_K * 4; // enough candidates for merging
+  const mainIndices = Array.from({ length: count }, (_, i) => i);
+  mainIndices.sort((a, b) => scored[b] - scored[a]);
+
+  // Build combined candidate list from main + wiki top candidates
+  const combined = [];
+  const mainLimit = Math.min(mainIndices.length, CANDIDATE_LIMIT);
+  for (let i = 0; i < mainLimit; i++) {
+    const idx = mainIndices[i];
+    combined.push({ entry: wordEntries[idx], score: scored[idx] });
+  }
+
+  if (wikiScored && wikiEntries && wikiEntries.length > 0) {
+    const wikiIndices = Array.from({ length: wikiEntries.length }, (_, i) => i);
+    wikiIndices.sort((a, b) => wikiScored[b] - wikiScored[a]);
+    const wikiLimit = Math.min(wikiIndices.length, CANDIDATE_LIMIT);
+    for (let i = 0; i < wikiLimit; i++) {
+      const idx = wikiIndices[i];
+      combined.push({ entry: wikiEntries[idx], score: wikiScored[idx] });
+    }
+  }
+
+  combined.sort((a, b) => b.score - a.score);
+
+  const groups = new Map();   // primary word -> { ...entry, defs: [{d, p, score}], score }
+  const order = [];           // insertion-order keys
+  const wordToGroup = new Map();  // any word -> group key (for cross-variant merging)
+  const stemToGroup = new Map();  // stem -> group key (for morphological merging)
+  for (const item of combined) {
+    const entry = item.entry;
+    const itemScore = item.score;
+    if (order.length >= TOP_K && !groups.has(entry.w[0].toLowerCase())) {
+      // Also check if any variant word maps to an existing group
+      let found = false;
+      for (const w of entry.w) {
+        if (wordToGroup.has(w.toLowerCase())) { found = true; break; }
+      }
+      if (!found) {
+        // Check stem-based grouping too
+        for (const w of entry.w) {
+          const s = stemWord(w);
+          if (s && stemToGroup.has(s)) { found = true; break; }
+        }
+      }
+      if (!found) break;
+    }
+    // Find existing group via any shared word
+    let groupKey = null;
+    for (const w of entry.w) {
+      if (wordToGroup.has(w.toLowerCase())) {
+        groupKey = wordToGroup.get(w.toLowerCase());
+        break;
+      }
+    }
+    // If no exact match, try stem-based grouping (bibliophilic -> bibliophilist)
+    if (!groupKey) {
+      for (const w of entry.w) {
+        const s = stemWord(w);
+        if (s && stemToGroup.has(s)) {
+          groupKey = stemToGroup.get(s);
+          break;
+        }
+      }
+    }
+    if (groupKey && groups.has(groupKey)) {
+      const g = groups.get(groupKey);
+      if (g.defs.length < 3) {
+        g.defs.push({ d: entry.d, p: entry.p, score: itemScore });
+        for (const w of entry.w) {
+          if (!g.w.includes(w)) g.w.push(w);
+          wordToGroup.set(w.toLowerCase(), groupKey);
+          const s = stemWord(w);
+          if (s) stemToGroup.set(s, groupKey);
+        }
+      }
+    } else {
+      if (order.length >= TOP_K) continue;
+      const primary = entry.w[0].toLowerCase();
+      const g = { w: [...entry.w], defs: [{ d: entry.d, p: entry.p, score: itemScore }], score: itemScore };
+      groups.set(primary, g);
+      order.push(primary);
+      for (const w of entry.w) {
+        wordToGroup.set(w.toLowerCase(), primary);
+        const s = stemWord(w);
+        if (s) stemToGroup.set(s, primary);
+      }
+    }
+  }
+  return order.map(k => groups.get(k));
 }
 
 // ---------------------------------------------------------------------------
@@ -559,7 +994,7 @@ function topK(scored, count) {
 function render(items, query) {
   if (items.length === 0) {
     $results.innerHTML = "";
-    $status.textContent = "No matches — try rephrasing your description.";
+    $status.textContent = "No matches: try rephrasing your description.";
     return;
   }
   $status.textContent = `Top ${items.length} matches`;
@@ -568,24 +1003,55 @@ function render(items, query) {
   history.replaceState(null, "", url);
 
   const maxScore = items[0].score;
-  $results.innerHTML = items.map((it, i) => {
+  const shownWords = new Set(items.map(it => it.w[0].toLowerCase()));
+  const MAX_ALT = 8;
+  const renderCard = (it, i) => {
     const primary = it.w[0];
-    const alt = it.w.length > 1 ? it.w.slice(1).join(", ") : "";
+    // Filter out synonyms that duplicate other result headwords
+    const altWords = it.w.slice(1).filter(w => !shownWords.has(w.toLowerCase()));
+    if (altWords.length === 0) {
+      var altHtml = "";
+    } else {
+      const visiblePart = altWords.slice(0, MAX_ALT).join(", ");
+      const hiddenPart = altWords.slice(MAX_ALT).join(", ");
+      altHtml = `<span class="card-words-alt">`
+        + `<span class="alt-visible">${esc(visiblePart)}</span>`
+        + (hiddenPart ? `<span class="alt-hidden">, ${esc(hiddenPart)}</span>` : "")
+        + `</span>`;
+    }
     const pct = Math.round((it.score / maxScore) * 100);
+    const defsHtml = it.defs.map((def, di) => {
+      const posTag = def.p ? `<span class="card-pos" data-pos="${esc(def.p)}">${esc(def.p)}</span> ` : "";
+      return `<p class="card-def">${di > 0 ? `<span class="def-num">${di + 1}.</span> ` : ""}${posTag}${esc(def.d)}</p>`;
+    }).join("");
     return `
       <article class="result-card" style="animation-delay:${i * 30}ms">
         <div class="card-head">
           <span class="card-word">${esc(primary)}</span>
-          <span class="card-pos" data-pos="${esc(it.p)}">${esc(it.p)}</span>
-          ${alt ? `<span class="card-words-alt">${esc(alt)}</span>` : ""}
+          ${it.defs.length === 1 ? `<span class="card-pos" data-pos="${esc(it.defs[0].p)}">${esc(it.defs[0].p)}</span>` : ""}
+          ${altHtml}
         </div>
-        <p class="card-def">${esc(it.d)}</p>
+        ${it.defs.length === 1 ? `<p class="card-def">${esc(it.defs[0].d)}</p>` : defsHtml}
         <div class="card-score">
           <div class="score-bar"><div class="score-fill" style="width:${pct}%"></div></div>
           <span class="score-pct">${pct}%</span>
         </div>
       </article>`;
-  }).join("");
+  };
+
+  const visible = items.slice(0, SHOW_K);
+  const hidden = items.slice(SHOW_K);
+  let html = visible.map(renderCard).join("");
+  if (hidden.length > 0) {
+    html += `<div class="more-results collapsed" id="moreResults">
+      ${hidden.map((it, i) => renderCard(it, SHOW_K + i)).join("")}
+    </div>
+    <button class="show-more-btn" id="showMoreBtn" onclick="
+      document.getElementById('moreResults').classList.toggle('collapsed');
+      this.textContent = this.textContent.includes('Show') ? 'Show fewer' : 'Show ${hidden.length} more matches';
+    ">Show ${hidden.length} more matches</button>`;
+  }
+  $results.innerHTML = html;
 }
 
 function esc(s) {
@@ -593,6 +1059,64 @@ function esc(s) {
   d.textContent = s;
   return d.innerHTML;
 }
+
+// ---------------------------------------------------------------------------
+// Copy-event feedback (DISABLED: privacy concern: query field is free-text)
+// Enable only after setting up FEEDBACK_ENDPOINT and adding input sanitization.
+// ---------------------------------------------------------------------------
+
+const FEEDBACK_ENDPOINT = "";   // set to a URL to enable; empty = disabled
+const FEEDBACK_KEY      = "wf_fb";
+const FEEDBACK_MAX      = 200;  // max buffered events before oldest are dropped
+
+/*  --- disabled for now ---
+$results.addEventListener("copy", () => {
+  if (!FEEDBACK_ENDPOINT) return;   // no-op unless endpoint is configured
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const card = sel.anchorNode?.parentElement?.closest?.(".result-card");
+  if (!card) return;
+  const word = card.querySelector(".card-word")?.textContent?.trim();
+  const query = $input.value.trim();
+  if (!word || !query) return;
+  const day = new Date().toISOString().slice(0, 10);
+  bufferFeedback({ q: query, w: word, d: day });
+});
+*/
+
+// Click-to-expand synonyms
+$results.addEventListener("click", (e) => {
+  const alt = e.target.closest(".card-words-alt");
+  if (alt) alt.classList.toggle("expanded");
+});
+
+function bufferFeedback(event) {
+  if (!FEEDBACK_ENDPOINT) return;
+  try {
+    const buf = JSON.parse(localStorage.getItem(FEEDBACK_KEY) || "[]");
+    buf.push(event);
+    while (buf.length > FEEDBACK_MAX) buf.shift();
+    localStorage.setItem(FEEDBACK_KEY, JSON.stringify(buf));
+    flushFeedback();
+  } catch { /* localStorage unavailable or full: silently skip */ }
+}
+
+function flushFeedback() {
+  if (!FEEDBACK_ENDPOINT) return;
+  try {
+    const buf = JSON.parse(localStorage.getItem(FEEDBACK_KEY) || "[]");
+    if (buf.length === 0) return;
+    const ok = navigator.sendBeacon(
+      FEEDBACK_ENDPOINT,
+      new Blob([JSON.stringify(buf)], { type: "application/json" })
+    );
+    if (ok) localStorage.removeItem(FEEDBACK_KEY);
+  } catch { /* silently skip */ }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushFeedback();
+});
 
 // ---------------------------------------------------------------------------
 // Rolling showcase
