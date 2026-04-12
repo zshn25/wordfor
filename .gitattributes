@@ -34,6 +34,7 @@ saved_model/**/* filter=lfs diff=lfs merge=lfs -text
 *.zst filter=lfs diff=lfs merge=lfs -text
 *tfevents* filter=lfs diff=lfs merge=lfs -text
 data/words.json filter=lfs diff=lfs merge=lfs -text
+models/onnx-community/mdbr-leaf-mt-ONNX/onnx/model_quantized.onnx_data filter=lfs diff=lfs merge=lfs -text
 *.bin !text !filter !merge !diff
 *.onnx !text !filter !merge !diff
 *.onnx_data !text !filter !merge !diff
