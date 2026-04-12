@@ -130,12 +130,7 @@ function keywordScore(queryTokens, defTokenSet) {
 
 function shouldUseLiteMode() {
   const params = new URLSearchParams(location.search);
-  if (params.get("mode") === "full") return false;
   if (params.get("mode") === "lite") return true;
-  if (navigator.deviceMemory && navigator.deviceMemory < 4) return true;
-  if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) return true;
-  const conn = navigator.connection;
-  if (conn?.effectiveType && ["slow-2g", "2g", "3g"].includes(conn.effectiveType)) return true;
   return false;
 }
 
@@ -281,7 +276,7 @@ async function loadPotionData() {
   addProgressRow("matrix", "Embedding model (~15 MB)");
   addProgressRow("emb",    "Dictionary vectors (~28 MB)");
   addProgressRow("words",  "Word list + vocab (~12 MB)");
-  $loaderNote.textContent = "First visit downloads ~55 MB (cached for future visits)";
+  $loaderNote.textContent = $loaderNote.textContent || "First visit downloads ~55 MB (cached for future visits)";
 
   const vocabPromise = fetch(`${DATA_ROOT}/vocab.txt`).then(async r => {
     const lines = (await r.text()).split(/\r?\n/);
@@ -316,42 +311,43 @@ async function loadPotionData() {
 }
 
 // ---------------------------------------------------------------------------
-// Full-mode background loader
+// Full-mode loader (during init, with progress bars)
 // ---------------------------------------------------------------------------
 
-async function loadFullModelInBackground() {
-  try {
-    const tfPromise = loadTransformers();
+async function loadFullModel() {
+  addProgressRow("tf",    "AI model (~22 MB)");
+  addProgressRow("femb",  "Full vectors (~42 MB)");
 
-    const int8Promise = fetch(`${DATA_ROOT}/embeddings_int8.bin`)
-      .then(r => r.arrayBuffer()).then(buf => new Uint8Array(buf));
-    const rangesPromise = fetch(`${DATA_ROOT}/embeddings_ranges.bin`)
-      .then(r => r.arrayBuffer()).then(buf => new Float32Array(buf));
+  const tfPromise = loadTransformers();
 
-    const { AutoModel, AutoTokenizer, device } = await tfPromise;
+  const int8Promise = fetchWithProgress(`${DATA_ROOT}/embeddings_int8.bin`, "femb")
+    .then(buf => new Uint8Array(buf));
+  const rangesPromise = fetch(`${DATA_ROOT}/embeddings_ranges.bin`)
+    .then(r => r.arrayBuffer()).then(buf => new Float32Array(buf));
 
-    const [tokenizer, model] = await Promise.all([
-      AutoTokenizer.from_pretrained(FULL_MODEL_ID),
-      AutoModel.from_pretrained(FULL_MODEL_ID, { dtype: "q8", device }),
-    ]);
-    fullTokenizer = tokenizer;
-    fullModel = model;
+  const { AutoModel, AutoTokenizer, device } = await tfPromise;
+  setProgress("tf", 40);
 
-    // Warm up: run a dummy inference so first real query is fast
-    const warmInput = await fullTokenizer("warm up", { padding: true, truncation: true });
-    await fullModel(warmInput);
+  const [tokenizer, model] = await Promise.all([
+    AutoTokenizer.from_pretrained(FULL_MODEL_ID),
+    AutoModel.from_pretrained(FULL_MODEL_ID, { dtype: "q8", device }),
+  ]);
+  fullTokenizer = tokenizer;
+  fullModel = model;
+  setProgress("tf", 80);
 
-    const [int8Data, rangesData] = await Promise.all([int8Promise, rangesPromise]);
-    fullEmbInt8    = int8Data;
-    fullRangeMin   = rangesData.subarray(0, FULL_DIMS);
-    fullRangeScale = rangesData.subarray(FULL_DIMS, FULL_DIMS * 2);
+  // Warm up: run a dummy inference so first real query is fast
+  const warmInput = await fullTokenizer("warm up", { padding: true, truncation: true });
+  await fullModel(warmInput);
+  setProgress("tf", 100);
 
-    fullReady = true;
-    DIMS = FULL_DIMS;
-    updateModeBadge();
-  } catch (err) {
-    console.warn("Full model load failed, staying in lite mode:", err.message);
-  }
+  const [int8Data, rangesData] = await Promise.all([int8Promise, rangesPromise]);
+  fullEmbInt8    = int8Data;
+  fullRangeMin   = rangesData.subarray(0, FULL_DIMS);
+  fullRangeScale = rangesData.subarray(FULL_DIMS, FULL_DIMS * 2);
+
+  fullReady = true;
+  DIMS = FULL_DIMS;
 }
 
 // ---------------------------------------------------------------------------
@@ -360,9 +356,23 @@ async function loadFullModelInBackground() {
 
 async function init() {
   MODE = shouldUseLiteMode() ? "lite" : "full";
-  DIMS = LITE_DIMS;
+  DIMS = MODE === "full" ? FULL_DIMS : LITE_DIMS;
 
-  await loadPotionData();
+  if (MODE === "full") {
+    // Full mode: load everything during the loading screen
+    // Potion data + full model in parallel
+    $loaderNote.textContent = "First visit downloads ~120 MB (cached for future visits)";
+    const potionPromise = loadPotionData();
+    const fullPromise = loadFullModel().catch(err => {
+      console.warn("Full model load failed, falling back to lite:", err.message);
+      MODE = "lite";
+      DIMS = LITE_DIMS;
+    });
+    await Promise.all([potionPromise, fullPromise]);
+  } else {
+    await loadPotionData();
+  }
+
   buildDefTokenIndex();
 
   // Show app
@@ -375,9 +385,6 @@ async function init() {
   // Deep link
   const q = new URLSearchParams(location.search).get("q");
   if (q) { $input.value = q; search(q); }
-
-  // Full mode: load heavy model in background (non-blocking)
-  if (MODE === "full") loadFullModelInBackground();
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +395,7 @@ function showModeBadge() {
   const badge = document.createElement("span");
   badge.className = "mode-badge";
   badge.id = "mode-badge";
-  const isLite = MODE === "lite" || !fullReady;
+  const isLite = MODE === "lite";
   badge.textContent = isLite ? "Lite" : "Full";
   badge.title = isLite
     ? "Lite mode (potion-base-8M). Add ?mode=full for higher quality."

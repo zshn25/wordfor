@@ -58,6 +58,8 @@ button{cursor:pointer;border:none;background:none;font:inherit;color:inherit}
 .nav-links{display:flex;gap:20px;align-items:center}
 .nav-links a{font-size:.9rem;color:var(--text-2);font-weight:500;transition:color .15s}
 .nav-links a:hover,.nav-links .nav-active{color:var(--brand);text-decoration:none}
+.nav-donate{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;background:rgba(255,94,91,.08);color:#FF5E5B!important;font-weight:600;transition:all .15s}
+.nav-donate:hover{background:rgba(255,94,91,.15);color:#FF5E5B!important;transform:translateY(-1px)}
 .nav-hamburger{display:none;width:40px;height:40px;align-items:center;justify-content:center;border-radius:8px;color:var(--text-2);transition:background .15s}
 .nav-hamburger:hover{background:rgba(79,70,229,.06)}
 .mode-badge{font-size:.6rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:6px;background:rgba(79,70,229,.08);color:var(--brand);margin-left:6px;vertical-align:middle;cursor:help}
