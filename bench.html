@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WordFor — Benchmark</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f8fafc; color: #1e293b; }
+    h1 { margin-bottom: 8px; }
+    .subtitle { color: #64748b; margin-bottom: 24px; }
+    .device-info { background: #e2e8f0; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: .875rem; }
+    .device-info dt { font-weight: 600; display: inline; }
+    .device-info dd { display: inline; margin: 0 16px 0 0; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+    th { background: #f1f5f9; font-weight: 600; font-size: .875rem; }
+    td { font-variant-numeric: tabular-nums; }
+    .running { color: #d97706; }
+    .done { color: #16a34a; font-weight: 600; }
+    .fail { color: #dc2626; }
+    .skip { color: #94a3b8; }
+    button { padding: 10px 24px; background: #4F46E5; color: #fff; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; margin-bottom: 16px; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    #log { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; font-family: monospace; font-size: .8rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
+    a { color: #4F46E5; }
+  </style>
+</head>
+<body>
+  <h1>WordFor Benchmark</h1>
+  <p class="subtitle">Measures load time and query latency for each mode &times; backend combination.</p>
+
+  <div class="device-info" id="device-info"></div>
+
+  <button id="run-btn" onclick="runAll()">Run Benchmarks</button>
+  <a href="/">← Back to WordFor</a>
+
+  <table>
+    <thead>
+      <tr><th>Test</th><th>Status</th><th>Load (s)</th><th>Query avg (ms)</th><th>Notes</th></tr>
+    </thead>
+    <tbody id="results"></tbody>
+  </table>
+
+  <h3>Log</h3>
+  <pre id="log"></pre>
+
+<script type="module">
+const DATA_ROOT = "data";
+const FULL_MODEL_ID = "onnx-community/mdbr-leaf-mt-ONNX";
+const FULL_DIMS = 384;
+const LITE_DIMS = 256;
+const QUERIES = [
+  "a feeling of longing for the past",
+  "fear of heights",
+  "extreme happiness",
+  "the study of stars",
+  "unable to be understood",
+];
+
+const $results = document.getElementById("results");
+const $log = document.getElementById("log");
+const $btn = document.getElementById("run-btn");
+
+function log(msg) {
+  const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  $log.textContent += line + "\n";
+  $log.scrollTop = $log.scrollHeight;
+  console.log(msg);
+}
+
+// --- Device info ---
+const info = document.getElementById("device-info");
+const mem = navigator.deviceMemory ? `${navigator.deviceMemory} GB` : "unknown";
+const cores = navigator.hardwareConcurrency || "unknown";
+const conn = navigator.connection?.effectiveType || "unknown";
+const gpu = navigator.gpu ? "available" : "not available";
+const ua = navigator.userAgent;
+const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+info.innerHTML = `
+  <dl>
+    <dt>Device:</dt><dd>${isMobile ? "Mobile" : "Desktop"}</dd>
+    <dt>Memory:</dt><dd>${mem}</dd>
+    <dt>Cores:</dt><dd>${cores}</dd>
+    <dt>Connection:</dt><dd>${conn}</dd>
+    <dt>WebGPU:</dt><dd>${gpu}</dd>
+    <dt>UA:</dt><dd style="font-size:.75rem;word-break:break-all">${ua}</dd>
+  </dl>`;
+
+// --- Float16 LUT ---
+const f16LUT = new Float32Array(65536);
+for (let i = 0; i < 65536; i++) {
+  const sign = (i >> 15) & 1, exp = (i >> 10) & 0x1f, frac = i & 0x3ff;
+  if (exp === 0) f16LUT[i] = (sign ? -1 : 1) * 2 ** -14 * (frac / 1024);
+  else if (exp === 31) f16LUT[i] = frac === 0 ? (sign ? -Infinity : Infinity) : NaN;
+  else f16LUT[i] = (sign ? -1 : 1) * 2 ** (exp - 15) * (1 + frac / 1024);
+}
+
+// --- Potion model (from app.js) ---
+class PotionModel {
+  constructor(vocabMap, matrixRaw, dims) {
+    this.vocab = vocabMap; this.matrix = matrixRaw; this.dims = dims;
+    this.unkId = vocabMap.get("[UNK]");
+  }
+  _preTokenize(text) {
+    text = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const tokens = []; let i = 0;
+    while (i < text.length) {
+      if (/\s/.test(text[i])) { i++; continue; }
+      if (this._isPunct(text[i])) { tokens.push(text[i]); i++; continue; }
+      let word = "";
+      while (i < text.length && !this._isPunct(text[i]) && !/\s/.test(text[i])) { word += text[i]; i++; }
+      if (word) tokens.push(word);
+    }
+    return tokens;
+  }
+  _isPunct(ch) {
+    const cp = ch.codePointAt(0);
+    return (cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) || (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126);
+  }
+  _wordPiece(word) {
+    if (this.vocab.has(word)) return [this.vocab.get(word)];
+    const ids = []; let start = 0;
+    while (start < word.length) {
+      let end = word.length, found = false;
+      while (start < end) {
+        const sub = (start === 0 ? "" : "##") + word.slice(start, end);
+        if (this.vocab.has(sub)) { ids.push(this.vocab.get(sub)); found = true; break; }
+        end--;
+      }
+      if (!found) { ids.push(this.unkId); start++; } else { start = end; }
+    }
+    return ids;
+  }
+  tokenize(text) { return this._preTokenize(text).flatMap(w => this._wordPiece(w)).filter(id => id !== this.unkId); }
+  encode(text) {
+    const ids = this.tokenize(text);
+    if (ids.length === 0) return new Float32Array(this.dims);
+    const vec = new Float32Array(this.dims);
+    for (const id of ids) { const off = id * this.dims; for (let d = 0; d < this.dims; d++) vec[d] += f16LUT[this.matrix[off + d]]; }
+    const n = ids.length; for (let d = 0; d < this.dims; d++) vec[d] /= n;
+    let norm = 0; for (let d = 0; d < this.dims; d++) norm += vec[d] * vec[d];
+    norm = Math.sqrt(norm) || 1e-32; for (let d = 0; d < this.dims; d++) vec[d] /= norm;
+    return vec;
+  }
+}
+
+// --- Helpers ---
+function timeout(ms, p) { return Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error("timeout")), ms))]); }
+
+function scoreInt8(qvec, embData, rangeMin, rangeScale, dims, count) {
+  const qScaled = new Float32Array(dims);
+  let qOffset = 0;
+  for (let d = 0; d < dims; d++) { qScaled[d] = qvec[d] * rangeScale[d] / 255; qOffset += qvec[d] * rangeMin[d]; }
+  let best = -Infinity;
+  for (let i = 0; i < count; i++) {
+    let dot = qOffset; const base = i * dims;
+    for (let d = 0; d < dims; d++) dot += qScaled[d] * embData[base + d];
+    if (dot > best) best = dot;
+  }
+  return best; // return best score (just for validation)
+}
+
+// --- Shared data ---
+let potionModel, potionEmbInt8, potionRangeMin, potionRangeScale, wordCount;
+let fullEmbInt8, fullRangeMin, fullRangeScale;
+
+async function loadSharedData() {
+  log("Loading shared data (potion model, embeddings, word list)...");
+  const t0 = performance.now();
+
+  const [vocabText, matrixBuf, embBuf, rangesBuf, wordsJson] = await Promise.all([
+    fetch(`${DATA_ROOT}/vocab.txt`).then(r => r.text()),
+    fetch(`${DATA_ROOT}/potion_matrix.bin`).then(r => r.arrayBuffer()),
+    fetch(`${DATA_ROOT}/embeddings_potion_int8.bin`).then(r => r.arrayBuffer()),
+    fetch(`${DATA_ROOT}/embeddings_potion_ranges.bin`).then(r => r.arrayBuffer()),
+    fetch(`${DATA_ROOT}/words.json`).then(r => r.json()),
+  ]);
+
+  const vocabMap = new Map();
+  vocabText.split(/\r?\n/).forEach((line, i) => { if (line) vocabMap.set(line, i); });
+  potionModel = new PotionModel(vocabMap, new Uint16Array(matrixBuf), LITE_DIMS);
+  potionEmbInt8 = new Uint8Array(embBuf);
+  const rangesData = new Float32Array(rangesBuf);
+  potionRangeMin = rangesData.subarray(0, LITE_DIMS);
+  potionRangeScale = rangesData.subarray(LITE_DIMS, LITE_DIMS * 2);
+  wordCount = wordsJson.length;
+
+  // Full embeddings
+  const [fullEmbBuf, fullRangesBuf] = await Promise.all([
+    fetch(`${DATA_ROOT}/embeddings_int8.bin`).then(r => r.arrayBuffer()),
+    fetch(`${DATA_ROOT}/embeddings_ranges.bin`).then(r => r.arrayBuffer()),
+  ]);
+  fullEmbInt8 = new Uint8Array(fullEmbBuf);
+  const fullRangesData = new Float32Array(fullRangesBuf);
+  fullRangeMin = fullRangesData.subarray(0, FULL_DIMS);
+  fullRangeScale = fullRangesData.subarray(FULL_DIMS, FULL_DIMS * 2);
+
+  log(`Shared data loaded in ${((performance.now() - t0) / 1000).toFixed(2)}s (${wordCount} entries)`);
+}
+
+// --- Test definitions ---
+const tests = [
+  { id: "lite",       name: "Lite (potion, pure JS)" },
+  { id: "full-wasm",  name: "Full (q4f16, WASM)" },
+  { id: "full-webgpu",name: "Full (q4f16, WebGPU)" },
+  { id: "full-q8-wasm", name: "Full (q8, WASM)" },
+];
+
+function addRow(test) {
+  const tr = document.createElement("tr");
+  tr.id = `row-${test.id}`;
+  tr.innerHTML = `<td>${test.name}</td><td class="running">pending</td><td>—</td><td>—</td><td></td>`;
+  $results.appendChild(tr);
+}
+
+function updateRow(id, status, loadTime, queryAvg, notes) {
+  const tr = document.getElementById(`row-${id}`);
+  if (!tr) return;
+  const cls = status === "done" ? "done" : status === "fail" ? "fail" : status === "skip" ? "skip" : "running";
+  tr.children[1].className = cls;
+  tr.children[1].textContent = status;
+  tr.children[2].textContent = loadTime != null ? loadTime.toFixed(2) : "—";
+  tr.children[3].textContent = queryAvg != null ? queryAvg.toFixed(1) : "—";
+  tr.children[4].textContent = notes || "";
+}
+
+// --- Lite benchmark ---
+async function benchLite() {
+  log("=== Lite mode (potion, pure JS) ===");
+  updateRow("lite", "running...");
+  const t0 = performance.now();
+  // Model already loaded in shared data
+  const loadTime = 0; // already loaded
+  log(`  Potion model ready (loaded with shared data)`);
+
+  const times = [];
+  for (const q of QUERIES) {
+    const t = performance.now();
+    const vec = potionModel.encode(q);
+    scoreInt8(vec, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, wordCount);
+    times.push(performance.now() - t);
+    log(`  "${q}" → ${times[times.length - 1].toFixed(1)} ms`);
+  }
+
+  const avg = times.reduce((a, b) => a + b, 0) / times.length;
+  updateRow("lite", "done", loadTime, avg, `${LITE_DIMS}d, ${(potionEmbInt8.byteLength / 1e6).toFixed(0)} MB emb`);
+  log(`  Average query: ${avg.toFixed(1)} ms\n`);
+  return { loadTime, queryAvg: avg };
+}
+
+// --- Full mode benchmark ---
+async function benchFull(id, dtype, deviceName) {
+  log(`=== Full mode (${dtype}, ${deviceName}) ===`);
+  updateRow(id, "loading...");
+
+  if (deviceName === "webgpu" && !navigator.gpu) {
+    updateRow(id, "skip", null, null, "WebGPU not available");
+    log("  Skipped — WebGPU not available\n");
+    return null;
+  }
+
+  let device = deviceName;
+  if (device === "webgpu") {
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) throw new Error("no adapter");
+    } catch {
+      updateRow(id, "skip", null, null, "WebGPU adapter failed");
+      log("  Skipped — WebGPU adapter failed\n");
+      return null;
+    }
+  }
+
+  try {
+    const t0 = performance.now();
+    const { AutoModel, AutoTokenizer, env } = await import(
+      "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4"
+    );
+    env.allowLocalModels = true;
+    env.allowRemoteModels = false;
+
+    log(`  Transformers.js imported in ${((performance.now() - t0) / 1000).toFixed(2)}s`);
+    updateRow(id, "compiling model...");
+
+    const tModel = performance.now();
+    const [tokenizer, model] = await Promise.all([
+      AutoTokenizer.from_pretrained(FULL_MODEL_ID),
+      timeout(120_000, AutoModel.from_pretrained(FULL_MODEL_ID, { dtype, device })),
+    ]);
+    const modelLoadTime = (performance.now() - tModel) / 1000;
+    log(`  Model loaded in ${modelLoadTime.toFixed(2)}s (${dtype}, ${device})`);
+
+    // Warmup
+    updateRow(id, "warming up...");
+    const warmInput = await tokenizer("warm up", { padding: true, truncation: true });
+    await timeout(60_000, model(warmInput));
+    log(`  Warmup done`);
+
+    const loadTime = (performance.now() - t0) / 1000;
+    updateRow(id, "querying...");
+
+    // Query benchmark
+    const times = [];
+    for (const q of QUERIES) {
+      const t = performance.now();
+      const inputs = await tokenizer(
+        "Represent this sentence for searching relevant passages: " + q,
+        { padding: true, truncation: true }
+      );
+      const { sentence_embedding } = await model(inputs);
+      const emb1024 = sentence_embedding.data;
+      // MRL truncation to 384d
+      const vec = new Float32Array(FULL_DIMS);
+      for (let i = 0; i < FULL_DIMS; i++) vec[i] = emb1024[i];
+      let norm = 0;
+      for (let i = 0; i < FULL_DIMS; i++) norm += vec[i] * vec[i];
+      norm = Math.sqrt(norm) || 1e-32;
+      for (let i = 0; i < FULL_DIMS; i++) vec[i] /= norm;
+      scoreInt8(vec, fullEmbInt8, fullRangeMin, fullRangeScale, FULL_DIMS, wordCount);
+      times.push(performance.now() - t);
+      log(`  "${q}" → ${times[times.length - 1].toFixed(1)} ms`);
+    }
+
+    const avg = times.reduce((a, b) => a + b, 0) / times.length;
+    updateRow(id, "done", loadTime, avg, `${FULL_DIMS}d, ${dtype}, ${device}`);
+    log(`  Load: ${loadTime.toFixed(2)}s, Avg query: ${avg.toFixed(1)} ms\n`);
+    return { loadTime, queryAvg: avg };
+  } catch (err) {
+    updateRow(id, "fail", null, null, err.message);
+    log(`  FAILED: ${err.message}\n`);
+    return null;
+  }
+}
+
+// --- Run all ---
+window.runAll = async function() {
+  $btn.disabled = true;
+  $results.innerHTML = "";
+  $log.textContent = "";
+  tests.forEach(addRow);
+
+  log("Starting benchmarks...\n");
+  log(`Device: ${isMobile ? "Mobile" : "Desktop"}, Memory: ${mem}, Cores: ${cores}, WebGPU: ${gpu}\n`);
+
+  await loadSharedData();
+
+  await benchLite();
+  await benchFull("full-wasm", "q4f16", "wasm");
+  await benchFull("full-webgpu", "q4f16", "webgpu");
+  await benchFull("full-q8-wasm", "q8", "wasm");
+
+  log("=== All benchmarks complete ===");
+  $btn.disabled = false;
+};
+</script>
+</body>
+</html>

@@ -241,9 +241,13 @@ async function loadTransformers() {
   env.allowLocalModels  = true;
   env.allowRemoteModels = false;
 
-  let device = "wasm";
-  if (typeof navigator !== "undefined" && navigator.gpu) {
-    try { if (await navigator.gpu.requestAdapter()) device = "webgpu"; } catch {}
+  // Use ?device=webgpu to opt-in; default is always WASM (reliable everywhere)
+  const params = new URLSearchParams(location.search);
+  let device = params.get("device") === "webgpu" ? "webgpu" : "wasm";
+  if (device === "webgpu") {
+    try {
+      if (!navigator.gpu || !(await navigator.gpu.requestAdapter())) device = "wasm";
+    } catch { device = "wasm"; }
   }
   return { AutoModel, AutoTokenizer, device };
 }
