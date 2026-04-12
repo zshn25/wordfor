@@ -1,6 +1,7 @@
 {
-  "count": 115904,
-  "dims": 384,
+  "count": 115070,
   "dtype": "float16",
-  "model": "BAAI/bge-small-en-v1.5"
+  "source": "oewn-2025-plus",
+  "full_dims": 384,
+  "full_model": "mixedbread-ai/mxbai-embed-large-v1"
 }

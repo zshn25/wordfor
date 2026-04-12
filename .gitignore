@@ -11,3 +11,8 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Build artifacts
+*.log
+build/*.zip
+build/*

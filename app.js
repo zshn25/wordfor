@@ -1,32 +1,36 @@
 /**
  * WordFor — Reverse Dictionary
+ * © 2025 Zeeshan Khan Suri (zshn25). Licensed under CC-BY-NC-ND-4.0.
  *
- * Runs a sentence-embedding model (bge-small-en-v1.5) in the browser via
- * Transformers.js / ONNX Runtime Web (WASM backend).  Pre-computed WordNet
- * definition embeddings are loaded from a static binary file; cosine
- * similarity search is performed entirely client-side.
+ * Two modes (auto-detected):
+ *   Full (desktop):  mdbr-leaf-mt (query) + mxbai-embed-large (defs) via Transformers.js
+ *   Lite (mobile):   potion-base-8M via pure JS static embeddings (sub-1ms)
  *
- * Scoring: hybrid of cosine similarity + keyword overlap to boost
- * results whose definitions share specific words with the query.
+ * Override with ?mode=full or ?mode=lite in the URL.
  */
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-const MODEL_ID       = "Xenova/bge-small-en-v1.5";
 const DATA_ROOT      = "data";
-const DIMS           = 384;
-const TOP_K          = 30;   // top results before dedup
-const DEBOUNCE       = 400;  // ms after last keystroke
+const TOP_K          = 30;
+const DEBOUNCE       = 400;
+const RATE_LIMIT_MAX = 15;
+const RATE_LIMIT_MS  = 10_000;
 
-// Hybrid scoring weights (tuned for reverse-dictionary relevance)
-const W_COSINE       = 0.70; // weight for embedding cosine similarity
-const W_KEYWORD      = 0.30; // weight for keyword overlap score
+const W_COSINE       = 0.70;
+const W_KEYWORD      = 0.30;
 
-const QUERY_PREFIX   = "Represent this sentence: ";
+const FULL_MODEL_ID  = "onnx-community/mdbr-leaf-mt-ONNX";
+const FULL_DIMS      = 384;
+const LITE_DIMS      = 256;
 
-// Stop words to ignore in keyword matching
+let MODE = null;
+let DIMS = null;
+let fullReady = false;
+
+// Stop words for keyword matching
 const STOP_WORDS = new Set([
   "a","an","the","is","are","was","were","be","been","being","of","in","to",
   "for","on","with","at","by","from","that","this","it","as","or","and","not",
@@ -59,14 +63,8 @@ const f16LUT = new Float32Array(65536);
   }
 })();
 
-function f16ToF32(u16) {
-  const out = new Float32Array(u16.length);
-  for (let i = 0; i < u16.length; i++) out[i] = f16LUT[u16[i]];
-  return out;
-}
-
 // ---------------------------------------------------------------------------
-// DOM references
+// DOM
 // ---------------------------------------------------------------------------
 
 const $loader        = document.getElementById("loader");
@@ -102,54 +100,162 @@ function setProgress(id, pct) {
 }
 
 // ---------------------------------------------------------------------------
-// Keyword scoring helpers
+// Keyword scoring
 // ---------------------------------------------------------------------------
 
-/** Tokenise a string into lower-case content words, dropping stop words. */
 function contentWords(text) {
   return text.toLowerCase().match(/[a-z]{2,}/g)?.filter(w => !STOP_WORDS.has(w)) ?? [];
 }
 
-/**
- * Build per-word sets of content tokens from all definitions, once after load.
- * This avoids re-tokenising 110k definitions on every search.
- */
-let defTokens; // Array<Set<string>>
+let defTokens;
 
 function buildDefTokenIndex() {
   defTokens = new Array(wordEntries.length);
   for (let i = 0; i < wordEntries.length; i++) {
     const entry = wordEntries[i];
-    // Combine definition text + the words themselves for matching
-    const combined = entry.d + " " + entry.w.join(" ");
-    defTokens[i] = new Set(contentWords(combined));
+    defTokens[i] = new Set(contentWords(entry.d + " " + entry.w.join(" ")));
   }
 }
 
-/**
- * Keyword overlap score: fraction of query content-words found in definition.
- * Returns 0..1.
- */
 function keywordScore(queryTokens, defTokenSet) {
   if (queryTokens.length === 0) return 0;
   let hits = 0;
-  for (const t of queryTokens) {
-    if (defTokenSet.has(t)) hits++;
-  }
+  for (const t of queryTokens) if (defTokenSet.has(t)) hits++;
   return hits / queryTokens.length;
 }
 
 // ---------------------------------------------------------------------------
-// Load model + data
+// Device detection
+// ---------------------------------------------------------------------------
+
+function shouldUseLiteMode() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("mode") === "full") return false;
+  if (params.get("mode") === "lite") return true;
+  if (navigator.deviceMemory && navigator.deviceMemory < 4) return true;
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) return true;
+  const conn = navigator.connection;
+  if (conn?.effectiveType && ["slow-2g", "2g", "3g"].includes(conn.effectiveType)) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// PotionModel — Pure JS Model2Vec inference
+// ---------------------------------------------------------------------------
+
+class PotionModel {
+  constructor(vocabMap, matrixRaw, dims) {
+    this.vocab  = vocabMap;
+    this.matrix = matrixRaw;
+    this.dims   = dims;
+    this.unkId  = vocabMap.get("[UNK]");
+  }
+
+  _preTokenize(text) {
+    text = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const tokens = [];
+    let i = 0;
+    while (i < text.length) {
+      if (/\s/.test(text[i])) { i++; continue; }
+      if (this._isPunct(text[i])) { tokens.push(text[i]); i++; continue; }
+      let word = "";
+      while (i < text.length && !this._isPunct(text[i]) && !/\s/.test(text[i])) {
+        word += text[i]; i++;
+      }
+      if (word) tokens.push(word);
+    }
+    return tokens;
+  }
+
+  _isPunct(ch) {
+    const cp = ch.codePointAt(0);
+    return (cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) ||
+           (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126);
+  }
+
+  _wordPiece(word) {
+    if (this.vocab.has(word)) return [this.vocab.get(word)];
+    const ids = [];
+    let start = 0;
+    while (start < word.length) {
+      let end = word.length;
+      let found = false;
+      while (start < end) {
+        const sub = (start === 0 ? "" : "##") + word.slice(start, end);
+        if (this.vocab.has(sub)) { ids.push(this.vocab.get(sub)); found = true; break; }
+        end--;
+      }
+      if (!found) { ids.push(this.unkId); start++; } else { start = end; }
+    }
+    return ids;
+  }
+
+  tokenize(text) {
+    const words = this._preTokenize(text);
+    const ids = [];
+    for (const w of words) ids.push(...this._wordPiece(w));
+    return ids.filter(id => id !== this.unkId);
+  }
+
+  encode(text) {
+    const ids = this.tokenize(text);
+    if (ids.length === 0) return new Float32Array(this.dims);
+    const vec = new Float32Array(this.dims);
+    for (const id of ids) {
+      const off = id * this.dims;
+      if (off + this.dims > this.matrix.length) continue;
+      for (let d = 0; d < this.dims; d++) vec[d] += f16LUT[this.matrix[off + d]];
+    }
+    const n = ids.length;
+    for (let d = 0; d < this.dims; d++) vec[d] /= n;
+    let norm = 0;
+    for (let d = 0; d < this.dims; d++) norm += vec[d] * vec[d];
+    norm = Math.sqrt(norm) || 1e-32;
+    for (let d = 0; d < this.dims; d++) vec[d] /= norm;
+    return vec;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Model + data state
+// ---------------------------------------------------------------------------
+
+let fullTokenizer;
+let fullModel;
+let potionModel;
+let wordEntries;
+
+// Potion int8 embeddings (lite mode scoring)
+let potionEmbInt8;      // Uint8Array  — int8 quantized potion embeddings
+let potionRangeMin;     // Float32Array(256) — per-dim min
+let potionRangeScale;   // Float32Array(256) — per-dim range
+
+// Full-mode int8 embeddings
+let fullEmbInt8;        // Uint8Array  — int8 quantized full embeddings
+let fullRangeMin;       // Float32Array(384) — per-dim min
+let fullRangeScale;     // Float32Array(384) — per-dim range
+
+// ---------------------------------------------------------------------------
+// Transformers.js loader
 // ---------------------------------------------------------------------------
 
 async function loadTransformers() {
-  const { pipeline, env } = await import(
-    "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3"
+  const { AutoModel, AutoTokenizer, env } = await import(
+    "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4"
   );
-  env.backends.onnx.wasm.numThreads = navigator.hardwareConcurrency || 4;
-  return pipeline;
+  env.allowLocalModels  = true;
+  env.allowRemoteModels = false;
+
+  let device = "wasm";
+  if (typeof navigator !== "undefined" && navigator.gpu) {
+    try { if (await navigator.gpu.requestAdapter()) device = "webgpu"; } catch {}
+  }
+  return { AutoModel, AutoTokenizer, device };
 }
+
+// ---------------------------------------------------------------------------
+// Data loading (shared by both modes)
+// ---------------------------------------------------------------------------
 
 async function fetchWithProgress(url, progressId) {
   const res = await fetch(url);
@@ -157,7 +263,6 @@ async function fetchWithProgress(url, progressId) {
   const reader = res.body.getReader();
   const chunks = [];
   let loaded = 0;
-
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -166,111 +271,242 @@ async function fetchWithProgress(url, progressId) {
     if (total) setProgress(progressId, (loaded / total) * 100);
   }
   setProgress(progressId, 100);
-
   const buf = new Uint8Array(loaded);
   let offset = 0;
   for (const c of chunks) { buf.set(c, offset); offset += c.length; }
   return buf.buffer;
 }
 
-let extractor;
-let wordEntries;
-let embMatrix;
+async function loadPotionData() {
+  addProgressRow("matrix", "Embedding model (~15 MB)");
+  addProgressRow("emb",    "Dictionary vectors (~28 MB)");
+  addProgressRow("words",  "Word list + vocab (~12 MB)");
+  $loaderNote.textContent = "First visit downloads ~55 MB (cached for future visits)";
 
-async function init() {
-  addProgressRow("model", "AI model (~34 MB)");
-  addProgressRow("emb",   "Dictionary vectors (~90 MB)");
-  addProgressRow("words", "Word list (~8 MB)");
-
-  const pipelineFactory = loadTransformers();
-
-  const embPromise = fetchWithProgress(`${DATA_ROOT}/embeddings.bin`, "emb").then(buf => {
-    const u16 = new Uint16Array(buf);
-    embMatrix = f16ToF32(u16);
+  const vocabPromise = fetch(`${DATA_ROOT}/vocab.txt`).then(async r => {
+    const lines = (await r.text()).split(/\r?\n/);
+    const map = new Map();
+    for (let i = 0; i < lines.length; i++) if (lines[i] !== "") map.set(lines[i], i);
+    setProgress("words", 50);
+    return map;
   });
+
+  const matrixPromise = fetchWithProgress(`${DATA_ROOT}/potion_matrix.bin`, "matrix")
+    .then(buf => new Uint16Array(buf));
+
+  const embPromise = fetchWithProgress(`${DATA_ROOT}/embeddings_potion_int8.bin`, "emb")
+    .then(buf => { potionEmbInt8 = new Uint8Array(buf); });
+
+  const rangesPromise = fetch(`${DATA_ROOT}/embeddings_potion_ranges.bin`)
+    .then(r => r.arrayBuffer()).then(buf => {
+      const data = new Float32Array(buf);
+      potionRangeMin   = data.subarray(0, LITE_DIMS);
+      potionRangeScale = data.subarray(LITE_DIMS, LITE_DIMS * 2);
+    });
 
   const wordsPromise = fetch(`${DATA_ROOT}/words.json`).then(async r => {
     wordEntries = await r.json();
     setProgress("words", 100);
   });
 
-  const makePipeline = await pipelineFactory;
-  extractor = await makePipeline("feature-extraction", MODEL_ID, {
-    dtype: "q8",
-    device: "wasm",
-    progress_callback: (p) => {
-      if (p.status === "progress" && p.progress != null) {
-        setProgress("model", p.progress);
-      }
-      if (p.status === "done") {
-        setProgress("model", 100);
-      }
-    },
-  });
+  const [vocabMap, matrixRaw] = await Promise.all([
+    vocabPromise, matrixPromise, embPromise, rangesPromise, wordsPromise,
+  ]);
+  potionModel = new PotionModel(vocabMap, matrixRaw, LITE_DIMS);
+}
 
-  await Promise.all([embPromise, wordsPromise]);
+// ---------------------------------------------------------------------------
+// Full-mode background loader
+// ---------------------------------------------------------------------------
 
-  // Build the keyword index for hybrid search
-  buildDefTokenIndex();
+async function loadFullModelInBackground() {
+  try {
+    const tfPromise = loadTransformers();
 
-  const actualCount = embMatrix.length / DIMS;
-  if (actualCount !== wordEntries.length) {
-    console.warn(`Count mismatch: embeddings=${actualCount}, words=${wordEntries.length}`);
-  }
+    const int8Promise = fetch(`${DATA_ROOT}/embeddings_int8.bin`)
+      .then(r => r.arrayBuffer()).then(buf => new Uint8Array(buf));
+    const rangesPromise = fetch(`${DATA_ROOT}/embeddings_ranges.bin`)
+      .then(r => r.arrayBuffer()).then(buf => new Float32Array(buf));
 
-  $loader.classList.add("done");
-  $app.classList.remove("hidden");
-  $input.focus();
-  startShowcase();
+    const { AutoModel, AutoTokenizer, device } = await tfPromise;
 
-  const params = new URLSearchParams(location.search);
-  if (params.get("q")) {
-    $input.value = params.get("q");
-    search($input.value);
+    const [tokenizer, model] = await Promise.all([
+      AutoTokenizer.from_pretrained(FULL_MODEL_ID),
+      AutoModel.from_pretrained(FULL_MODEL_ID, { dtype: "q8", device }),
+    ]);
+    fullTokenizer = tokenizer;
+    fullModel = model;
+
+    // Warm up: run a dummy inference so first real query is fast
+    const warmInput = await fullTokenizer("warm up", { padding: true, truncation: true });
+    await fullModel(warmInput);
+
+    const [int8Data, rangesData] = await Promise.all([int8Promise, rangesPromise]);
+    fullEmbInt8    = int8Data;
+    fullRangeMin   = rangesData.subarray(0, FULL_DIMS);
+    fullRangeScale = rangesData.subarray(FULL_DIMS, FULL_DIMS * 2);
+
+    fullReady = true;
+    DIMS = FULL_DIMS;
+    updateModeBadge();
+  } catch (err) {
+    console.warn("Full model load failed, staying in lite mode:", err.message);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Search  (hybrid: cosine similarity + keyword overlap)
+// Init
+// ---------------------------------------------------------------------------
+
+async function init() {
+  MODE = shouldUseLiteMode() ? "lite" : "full";
+  DIMS = LITE_DIMS;
+
+  await loadPotionData();
+  buildDefTokenIndex();
+
+  // Show app
+  $loader.classList.add("done");
+  $app.classList.remove("hidden");
+  $input.focus();
+  startShowcase();
+  showModeBadge();
+
+  // Deep link
+  const q = new URLSearchParams(location.search).get("q");
+  if (q) { $input.value = q; search(q); }
+
+  // Full mode: load heavy model in background (non-blocking)
+  if (MODE === "full") loadFullModelInBackground();
+}
+
+// ---------------------------------------------------------------------------
+// Mode badge
+// ---------------------------------------------------------------------------
+
+function showModeBadge() {
+  const badge = document.createElement("span");
+  badge.className = "mode-badge";
+  badge.id = "mode-badge";
+  const isLite = MODE === "lite" || !fullReady;
+  badge.textContent = isLite ? "Lite" : "Full";
+  badge.title = isLite
+    ? "Lite mode (potion-base-8M). Add ?mode=full for higher quality."
+    : "Full mode (mdbr-leaf-mt). Add ?mode=lite for lower memory.";
+  document.querySelector(".brand")?.appendChild(badge);
+}
+
+function updateModeBadge() {
+  const badge = document.getElementById("mode-badge");
+  if (!badge) return;
+  badge.textContent = "Full";
+  badge.title = "Full mode (mdbr-leaf-mt). Add ?mode=lite for lower memory.";
+}
+
+// ---------------------------------------------------------------------------
+// Query embedding
+// ---------------------------------------------------------------------------
+
+async function embedQuery(query) {
+  if (MODE === "lite" || !fullReady) {
+    return potionModel.encode(query);
+  }
+  const inputs = await fullTokenizer(
+    "Represent this sentence for searching relevant passages: " + query,
+    { padding: true, truncation: true },
+  );
+  const { sentence_embedding } = await fullModel(inputs);
+  const emb1024 = sentence_embedding.data;
+
+  // MRL truncation to 384d + re-normalize
+  const vec = new Float32Array(FULL_DIMS);
+  for (let i = 0; i < FULL_DIMS; i++) vec[i] = emb1024[i];
+  let norm = 0;
+  for (let i = 0; i < FULL_DIMS; i++) norm += vec[i] * vec[i];
+  norm = Math.sqrt(norm) || 1e-32;
+  for (let i = 0; i < FULL_DIMS; i++) vec[i] /= norm;
+  return vec;
+}
+
+// ---------------------------------------------------------------------------
+// Rate limiter
+// ---------------------------------------------------------------------------
+
+const _ts = [];
+
+function isRateLimited() {
+  const now = Date.now();
+  while (_ts.length && _ts[0] <= now - RATE_LIMIT_MS) _ts.shift();
+  if (_ts.length >= RATE_LIMIT_MAX) return true;
+  _ts.push(now);
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Int8 dot product scoring (shared by lite + full modes)
+// ---------------------------------------------------------------------------
+
+function scoreInt8(qvec, embData, rangeMin, rangeScale, dims, count, out) {
+  const qScaled = new Float32Array(dims);
+  let qOffset = 0;
+  for (let d = 0; d < dims; d++) {
+    qScaled[d] = qvec[d] * rangeScale[d] / 255;
+    qOffset += qvec[d] * rangeMin[d];
+  }
+  for (let i = 0; i < count; i++) {
+    let dot = qOffset;
+    const base = i * dims;
+    for (let d = 0; d < dims; d++) dot += qScaled[d] * embData[base + d];
+    out[i] = dot;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Search
 // ---------------------------------------------------------------------------
 
 async function search(query) {
   query = query.trim();
   if (!query) { $results.innerHTML = ""; $status.textContent = ""; return; }
+  if (isRateLimited()) { $status.textContent = "Too many searches — please wait a moment."; return; }
 
-  $status.textContent = "Searching…";
-
-  // Embed the query
-  const out = await extractor(QUERY_PREFIX + query, {
-    pooling: "cls",
-    normalize: true,
-  });
-  const qvec = out.data;
-
-  // Tokenise query for keyword matching
   const qTokens = contentWords(query);
+  const count   = wordEntries.length;
 
-  // Score every entry: hybrid = W_COSINE * cosine + W_KEYWORD * keyword
-  const count = wordEntries.length;
-  const scored = new Float32Array(count);
-
-  for (let i = 0; i < count; i++) {
-    // Cosine similarity (embeddings are pre-normalised)
-    let dot = 0;
-    const base = i * DIMS;
-    for (let d = 0; d < DIMS; d++) dot += qvec[d] * embMatrix[base + d];
-
-    // Keyword overlap
-    const kw = keywordScore(qTokens, defTokens[i]);
-
-    scored[i] = W_COSINE * dot + W_KEYWORD * kw;
+  // Instant potion preview (full mode: show while model runs)
+  if (fullReady && potionModel && potionEmbInt8) {
+    $status.textContent = "Searching\u2026";
+    const potionVec = potionModel.encode(query);
+    const preview = new Float32Array(count);
+    scoreInt8(potionVec, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, count, preview);
+    for (let i = 0; i < count; i++) {
+      preview[i] = W_COSINE * preview[i] + W_KEYWORD * keywordScore(qTokens, defTokens[i]);
+    }
+    render(topK(preview, count), query);
+    $status.textContent = "Refining\u2026";
+  } else {
+    $status.textContent = "Searching\u2026";
   }
 
-  // Top-K indices
+  const qvec   = await embedQuery(query);
+  const scored = new Float32Array(count);
+
+  if (fullReady) {
+    scoreInt8(qvec, fullEmbInt8, fullRangeMin, fullRangeScale, FULL_DIMS, count, scored);
+  } else {
+    // Lite: int8 cosine + keyword
+    scoreInt8(qvec, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, count, scored);
+    for (let i = 0; i < count; i++) {
+      scored[i] = W_COSINE * scored[i] + W_KEYWORD * keywordScore(qTokens, defTokens[i]);
+    }
+  }
+
+  render(topK(scored, count), query);
+}
+
+function topK(scored, count) {
   const indices = Array.from({ length: count }, (_, i) => i);
   indices.sort((a, b) => scored[b] - scored[a]);
-
-  // Deduplicate by primary word
   const seen = new Set();
   const deduped = [];
   for (const idx of indices) {
@@ -281,12 +517,11 @@ async function search(query) {
     seen.add(primary);
     deduped.push({ ...entry, score: scored[idx] });
   }
-
-  render(deduped, query);
+  return deduped;
 }
 
 // ---------------------------------------------------------------------------
-// Render results
+// Render
 // ---------------------------------------------------------------------------
 
 function render(items, query) {
@@ -295,15 +530,12 @@ function render(items, query) {
     $status.textContent = "No matches — try rephrasing your description.";
     return;
   }
-
   $status.textContent = `Top ${items.length} matches`;
-
   const url = new URL(location.href);
   url.searchParams.set("q", query);
   history.replaceState(null, "", url);
 
   const maxScore = items[0].score;
-
   $results.innerHTML = items.map((it, i) => {
     const primary = it.w[0];
     const alt = it.w.length > 1 ? it.w.slice(1).join(", ") : "";
@@ -331,10 +563,10 @@ function esc(s) {
 }
 
 // ---------------------------------------------------------------------------
-// Rolling showcase  (cycles through example query→word pairs)
+// Rolling showcase
 // ---------------------------------------------------------------------------
 
-const SHOWCASE_ITEMS = [
+const SHOWCASE = [
   { q: "a feeling of longing for the past",       w: "nostalgia" },
   { q: "fear of being forgotten",                  w: "athazagoraphobia" },
   { q: "the art of beautiful handwriting",         w: "calligraphy" },
@@ -353,15 +585,11 @@ let showcaseInterval;
 function cycleShowcase() {
   const $showcase = document.getElementById("showcase");
   if (!$showcase) return;
-
-  const item = SHOWCASE_ITEMS[showcaseIdx % SHOWCASE_ITEMS.length];
+  const item = SHOWCASE[showcaseIdx % SHOWCASE.length];
   showcaseIdx++;
-
   const $row = $showcase.querySelector(".showcase-row");
   $row.style.animation = "none";
-  // Force reflow to restart animation
   void $row.offsetWidth;
-
   $row.querySelector(".showcase-query").textContent = `"${item.q}"`;
   $row.querySelector(".showcase-word").textContent = item.w;
   $row.style.animation = "showcaseFade .6s ease both";
@@ -372,7 +600,6 @@ function startShowcase() {
   showcaseInterval = setInterval(cycleShowcase, 3500);
 }
 
-// Pause showcase once user starts searching
 function stopShowcase() {
   if (showcaseInterval) { clearInterval(showcaseInterval); showcaseInterval = null; }
   const $showcase = document.getElementById("showcase");
@@ -380,8 +607,23 @@ function stopShowcase() {
 }
 
 // ---------------------------------------------------------------------------
-// Event wiring
+// Events
 // ---------------------------------------------------------------------------
+
+const $hamburger = document.getElementById("nav-hamburger");
+const $navLinks  = document.getElementById("nav-links");
+if ($hamburger && $navLinks) {
+  $hamburger.addEventListener("click", () => {
+    const open = $navLinks.classList.toggle("open");
+    $hamburger.setAttribute("aria-expanded", open);
+  });
+  $navLinks.addEventListener("click", (e) => {
+    if (e.target.closest("a")) {
+      $navLinks.classList.remove("open");
+      $hamburger.setAttribute("aria-expanded", "false");
+    }
+  });
+}
 
 let timer;
 $input.addEventListener("input", () => {
@@ -389,12 +631,10 @@ $input.addEventListener("input", () => {
   if ($input.value.trim()) stopShowcase();
   timer = setTimeout(() => search($input.value), DEBOUNCE);
 });
-
 $input.addEventListener("keydown", (e) => {
   if (e.key === "Enter") { clearTimeout(timer); search($input.value); }
   if (e.key === "Escape") { $input.value = ""; $results.innerHTML = ""; $status.textContent = ""; }
 });
-
 $btn.addEventListener("click", () => { clearTimeout(timer); search($input.value); });
 
 document.querySelectorAll(".example-chip").forEach(chip => {
@@ -409,6 +649,10 @@ document.querySelectorAll(".example-chip").forEach(chip => {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
 
 init().catch(err => {
   console.error(err);

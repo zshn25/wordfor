@@ -1,3 +1,4 @@
+<!-- © 2025 Zeeshan Khan Suri (zshn25). Licensed under CC-BY-NC-ND-4.0. -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,12 +7,12 @@
 
   <title>About — WordFor | Reverse Dictionary</title>
   <meta name="description" content="Learn how WordFor works — a free reverse dictionary powered by AI that runs entirely in your browser.">
-  <link rel="canonical" href="https://wordfor.app/about.html">
+  <link rel="canonical" href="https://wordfor.xyz/about.html">
 
   <meta property="og:type" content="website">
   <meta property="og:title" content="About WordFor">
   <meta property="og:description" content="How WordFor works and the story behind it.">
-  <meta property="og:url" content="https://wordfor.app/about.html">
+  <meta property="og:url" content="https://wordfor.xyz/about.html">
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%234F46E5'/><text x='16' y='22' text-anchor='middle' fill='white' font-family='Georgia,serif' font-size='18' font-weight='bold'>W</text></svg>">
 
@@ -109,20 +110,41 @@
       <h2 class="about-section-title">Under the hood</h2>
       <div class="tech-grid">
         <div class="tech-card">
-          <h3>Embedding model</h3>
-          <p><a href="https://huggingface.co/BAAI/bge-small-en-v1.5" target="_blank" rel="noopener">bge-small-en-v1.5</a> — a 33M-parameter sentence encoder that runs in your browser via ONNX Runtime WebAssembly.</p>
+          <h3>Full mode (desktop)</h3>
+          <p><a href="https://huggingface.co/MongoDB/mdbr-leaf-mt" target="_blank" rel="noopener">mdbr-leaf-mt</a> — a 22M-parameter sentence encoder running via <a href="https://huggingface.co/docs/transformers.js" target="_blank" rel="noopener">Transformers.js</a> / ONNX Runtime (WASM or WebGPU), using the <a href="https://huggingface.co/onnx-community/mdbr-leaf-mt-ONNX" target="_blank" rel="noopener">optimized ONNX conversion</a>. Uses asymmetric retrieval: definitions encoded at build time by the larger teacher model <a href="https://huggingface.co/mixedbread-ai/mxbai-embed-large-v1" target="_blank" rel="noopener">mxbai-embed-large-v1</a>.</p>
+        </div>
+        <div class="tech-card">
+          <h3>Lite mode (mobile)</h3>
+          <p><a href="https://huggingface.co/minishlab/potion-base-8M" target="_blank" rel="noopener">potion-base-8M</a> — a Model2Vec static embedding model. Pure JS inference with no runtime dependencies, sub-1ms query speed, and lower memory usage.</p>
         </div>
         <div class="tech-card">
           <h3>Dictionary</h3>
-          <p><a href="https://wordnet.princeton.edu/" target="_blank" rel="noopener">Princeton WordNet</a> — 110,000+ English definitions, pre-embedded offline and served as a static binary file.</p>
-        </div>
-        <div class="tech-card">
-          <h3>Inference</h3>
-          <p><a href="https://huggingface.co/docs/transformers.js" target="_blank" rel="noopener">Transformers.js</a> runs the model locally via WebAssembly. No server, no API calls, no cost.</p>
+          <p><a href="https://en-word.net/" target="_blank" rel="noopener">Open English WordNet 2025+</a> — 120,000+ English definitions including proper nouns from Open English Namenet, pre-embedded offline and served as static binary files.</p>
         </div>
         <div class="tech-card">
           <h3>Scoring</h3>
-          <p>Hybrid ranking: 70% cosine similarity between embedding vectors + 30% keyword overlap between query and definition text.</p>
+          <p>Full mode: pure cosine similarity on bare definition embeddings. Lite mode: 70% cosine similarity + 30% keyword overlap. On desktop, lite results appear instantly while the full AI model loads in the background.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- API / Deep Linking -->
+    <section class="about-section">
+      <h2 class="about-section-title">API access</h2>
+      <p class="about-text">
+        WordFor runs entirely in the browser, so there's no traditional REST API.
+        However, you can link directly to searches and embed results:
+      </p>
+      <div class="tech-grid">
+        <div class="tech-card">
+          <h3>URL query</h3>
+          <p>Link to a pre-filled search: <code>?q=fear+of+heights</code>. Add <code>&amp;mode=lite</code> or <code>&amp;mode=full</code> to force a mode.</p>
+        </div>
+        <div class="tech-card">
+          <h3>Embed via iframe</h3>
+          <p>Embed WordFor in your page:<br>
+            <code>&lt;iframe src="https://wordfor.xyz/?q=your+query" width="100%" height="600"&gt;&lt;/iframe&gt;</code>
+          </p>
         </div>
       </div>
     </section>

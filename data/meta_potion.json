@@ -1,0 +1,10 @@
+{
+  "count": 115070,
+  "dtype": "float16",
+  "source": "oewn-2025-plus",
+  "dims": 256,
+  "model": "minishlab/potion-base-8M",
+  "vocab_size": 29528,
+  "matrix_rows": 29528,
+  "matrix_cols": 256
+}
