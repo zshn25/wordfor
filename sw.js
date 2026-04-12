@@ -8,7 +8,7 @@
  *   - Cross-origin (CDN libs): NOT intercepted.
  */
 
-const CACHE_NAME = "wordfor-v11";
+const CACHE_NAME = "wordfor-v12";
 
 const APP_SHELL = [
   "/",

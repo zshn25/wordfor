@@ -2,11 +2,11 @@
  * WordFor — Reverse Dictionary
  * © 2025 Zeeshan Khan Suri (zshn25). Licensed under CC-BY-NC-ND-4.0.
  *
- * Two modes (auto-detected):
- *   Full (desktop):  mdbr-leaf-mt (query) + mxbai-embed-large (defs) via Transformers.js
- *   Lite (mobile):   potion-base-8M via pure JS static embeddings (sub-1ms)
+ * Default:       mdbr-leaf-mt (query) + mxbai-embed-large (defs) via Transformers.js
+ * Lite fallback: potion-base-8M via pure JS static embeddings (sub-1ms)
  *
- * Override with ?mode=full or ?mode=lite in the URL.
+ * Lite mode activates automatically if the full model fails to load,
+ * or manually via ?mode=lite in the URL.
  */
 
 // ---------------------------------------------------------------------------
@@ -314,8 +314,15 @@ async function loadPotionData() {
 // Full-mode loader (during init, with progress bars)
 // ---------------------------------------------------------------------------
 
+function timeout(ms, promise) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+  ]);
+}
+
 async function loadFullModel() {
-  addProgressRow("tf",    "AI model (~22 MB)");
+  addProgressRow("tf",    "AI model (~30 MB)");
   addProgressRow("femb",  "Full vectors (~42 MB)");
 
   const tfPromise = loadTransformers();
@@ -330,7 +337,7 @@ async function loadFullModel() {
 
   const [tokenizer, model] = await Promise.all([
     AutoTokenizer.from_pretrained(FULL_MODEL_ID),
-    AutoModel.from_pretrained(FULL_MODEL_ID, { dtype: "q8", device }),
+    timeout(90_000, AutoModel.from_pretrained(FULL_MODEL_ID, { dtype: "q4f16", device })),
   ]);
   fullTokenizer = tokenizer;
   fullModel = model;
@@ -338,7 +345,7 @@ async function loadFullModel() {
 
   // Warm up: run a dummy inference so first real query is fast
   const warmInput = await fullTokenizer("warm up", { padding: true, truncation: true });
-  await fullModel(warmInput);
+  await timeout(30_000, fullModel(warmInput));
   setProgress("tf", 100);
 
   const [int8Data, rangesData] = await Promise.all([int8Promise, rangesPromise]);
@@ -357,6 +364,7 @@ async function loadFullModel() {
 async function init() {
   MODE = shouldUseLiteMode() ? "lite" : "full";
   DIMS = MODE === "full" ? FULL_DIMS : LITE_DIMS;
+  let liteFallback = false;
 
   if (MODE === "full") {
     // Full mode: load everything during the loading screen
@@ -367,6 +375,7 @@ async function init() {
       console.warn("Full model load failed, falling back to lite:", err.message);
       MODE = "lite";
       DIMS = LITE_DIMS;
+      liteFallback = true;
     });
     await Promise.all([potionPromise, fullPromise]);
   } else {
@@ -381,6 +390,8 @@ async function init() {
   $input.focus();
   startShowcase();
   showModeBadge();
+
+  if (liteFallback) showLiteFallbackBanner();
 
   // Deep link
   const q = new URLSearchParams(location.search).get("q");
@@ -408,6 +419,16 @@ function updateModeBadge() {
   if (!badge) return;
   badge.textContent = "Full";
   badge.title = "Full mode (mdbr-leaf-mt). Add ?mode=lite for lower memory.";
+}
+
+function showLiteFallbackBanner() {
+  const banner = document.createElement("div");
+  banner.className = "lite-fallback-banner";
+  banner.innerHTML = `
+    <span>The full AI model couldn\u2019t load on this device. Running in <strong>Lite mode</strong> \u2014 results may be less accurate. For best quality, try on a desktop browser.</span>
+    <button class="banner-close" aria-label="Dismiss">&times;</button>`;
+  banner.querySelector(".banner-close").addEventListener("click", () => banner.remove());
+  document.getElementById("app").prepend(banner);
 }
 
 // ---------------------------------------------------------------------------
