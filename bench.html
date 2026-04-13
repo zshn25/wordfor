@@ -3,46 +3,78 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WordFor — Benchmark</title>
+  <title>WordFor - Benchmark</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f8fafc; color: #1e293b; }
-    h1 { margin-bottom: 8px; }
-    .subtitle { color: #64748b; margin-bottom: 24px; }
-    .device-info { background: #e2e8f0; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: .875rem; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #0F172A; line-height: 1.6; padding: 24px; max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
+    h2 { font-size: 1.15rem; font-weight: 700; margin: 28px 0 12px; }
+    .subtitle { color: #475569; font-size: .9rem; margin-bottom: 24px; }
+    .device-info { background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; font-size: .85rem; }
     .device-info dt { font-weight: 600; display: inline; }
-    .device-info dd { display: inline; margin: 0 16px 0 0; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
-    th { background: #f1f5f9; font-weight: 600; font-size: .875rem; }
-    td { font-variant-numeric: tabular-nums; }
+    .device-info dd { display: inline; margin: 0 16px 0 0; color: #475569; }
+    .status { padding: 10px 16px; border-radius: 10px; background: #fff; border: 1px solid #E2E8F0; margin-bottom: 16px; font-size: .9rem; color: #475569; }
+    .status.loading { background: #FEF3C7; border-color: #F59E0B; color: #92400E; }
+    .status.ready { background: #ECFDF5; border-color: #059669; color: #065F46; }
+    .status.error { background: #FEF2F2; border-color: #EF4444; color: #991B1B; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.05); margin-bottom: 16px; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #E2E8F0; font-size: .88rem; }
+    th { background: #F1F5F9; font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #475569; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono', Consolas, monospace; font-size: .85rem; }
+    tr.best td { background: #ECFDF5; font-weight: 600; }
+    .bar { height: 6px; border-radius: 3px; background: #E2E8F0; overflow: hidden; min-width: 80px; display: inline-block; width: 80px; vertical-align: middle; }
+    .bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #818CF8, #4F46E5); }
+    .bar-fill.slow { background: linear-gradient(90deg, #FCA5A5, #EF4444); }
+    .bar-fill.med { background: linear-gradient(90deg, #FCD34D, #F59E0B); }
     .running { color: #d97706; }
     .done { color: #16a34a; font-weight: 600; }
     .fail { color: #dc2626; }
     .skip { color: #94a3b8; }
-    button { padding: 10px 24px; background: #4F46E5; color: #fff; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; margin-bottom: 16px; }
+    button { padding: 10px 24px; background: #4F46E5; color: #fff; border: none; border-radius: 10px; font-size: .95rem; font-weight: 600; cursor: pointer; margin-right: 8px; }
+    button:hover { background: #3730A3; }
     button:disabled { opacity: .5; cursor: not-allowed; }
-    #log { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; font-family: monospace; font-size: .8rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
-    a { color: #4F46E5; }
+    .btn-group { margin-bottom: 16px; }
+    #log { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 10px; font-family: 'SF Mono', Consolas, monospace; font-size: .78rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; margin-top: 20px; }
+    a { color: #4F46E5; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .info { font-size: .82rem; color: #94A3B8; margin-top: 4px; }
   </style>
 </head>
 <body>
   <h1>WordFor Benchmark</h1>
-  <p class="subtitle">Measures load time and query latency for each mode &times; backend combination.</p>
+  <p class="subtitle">Measures scoring speed and end-to-end query latency in your browser.</p>
 
   <div class="device-info" id="device-info"></div>
 
-  <button id="run-btn" onclick="runAll()">Run Benchmarks</button>
-  <a href="/">← Back to WordFor</a>
+  <div class="status loading" id="status">Loading data files...</div>
 
+  <div class="btn-group">
+    <button id="score-btn" disabled onclick="runScoringBench()">Run Scoring Benchmark</button>
+    <button id="e2e-btn" disabled onclick="runE2E()">Run Full E2E Benchmark</button>
+    <a href="/">Back to WordFor</a>
+  </div>
+
+  <!-- Scoring benchmark results -->
+  <h2>Scoring Performance (per-query, all entries)</h2>
+  <p class="info">Benchmarks the raw vector scoring step only (no model inference). 20 iterations, random query vectors.</p>
+  <table id="score-table" style="display:none">
+    <thead>
+      <tr><th>Method</th><th>Data Size</th><th>Avg (ms)</th><th>P50 (ms)</th><th>P99 (ms)</th><th>Speed</th></tr>
+    </thead>
+    <tbody id="score-body"></tbody>
+  </table>
+
+  <!-- E2E benchmark results -->
+  <h2>End-to-End Query Latency</h2>
+  <p class="info">Full pipeline: query encoding (model inference) + scoring + ranking.</p>
   <table>
     <thead>
       <tr><th>Test</th><th>Status</th><th>Load (s)</th><th>Query avg (ms)</th><th>Notes</th></tr>
     </thead>
-    <tbody id="results"></tbody>
+    <tbody id="e2e-results"></tbody>
   </table>
 
-  <h3>Log</h3>
+  <h3 style="margin-top:20px">Log</h3>
   <pre id="log"></pre>
 
 <script type="module">
@@ -50,6 +82,9 @@ const DATA_ROOT = "data";
 const FULL_MODEL_ID = "onnx-community/mdbr-leaf-mt-ONNX";
 const FULL_DIMS = 384;
 const LITE_DIMS = 256;
+const BINARY_BYTES = FULL_DIMS / 8;
+const SCORE_WARMUP = 3;
+const SCORE_ITERS = 20;
 const QUERIES = [
   "a feeling of longing for the past",
   "fear of heights",
@@ -58,34 +93,42 @@ const QUERIES = [
   "unable to be understood",
 ];
 
-const $results = document.getElementById("results");
+const $status = document.getElementById("status");
+const $scoreBtn = document.getElementById("score-btn");
+const $e2eBtn = document.getElementById("e2e-btn");
+const $scoreTable = document.getElementById("score-table");
+const $scoreBody = document.getElementById("score-body");
+const $e2eResults = document.getElementById("e2e-results");
 const $log = document.getElementById("log");
-const $btn = document.getElementById("run-btn");
 
 function log(msg) {
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
   $log.textContent += line + "\n";
   $log.scrollTop = $log.scrollHeight;
-  console.log(msg);
 }
 
 // --- Device info ---
 const info = document.getElementById("device-info");
 const mem = navigator.deviceMemory ? `${navigator.deviceMemory} GB` : "unknown";
 const cores = navigator.hardwareConcurrency || "unknown";
-const conn = navigator.connection?.effectiveType || "unknown";
-const gpu = navigator.gpu ? "available" : "not available";
-const ua = navigator.userAgent;
-const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-info.innerHTML = `
-  <dl>
-    <dt>Device:</dt><dd>${isMobile ? "Mobile" : "Desktop"}</dd>
-    <dt>Memory:</dt><dd>${mem}</dd>
-    <dt>Cores:</dt><dd>${cores}</dd>
-    <dt>Connection:</dt><dd>${conn}</dd>
-    <dt>WebGPU:</dt><dd>${gpu}</dd>
-    <dt>UA:</dt><dd style="font-size:.75rem;word-break:break-all">${ua}</dd>
-  </dl>`;
+const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+info.innerHTML = `<dl>
+  <dt>Device:</dt><dd>${isMobile ? "Mobile" : "Desktop"}</dd>
+  <dt>Memory:</dt><dd>${mem}</dd>
+  <dt>Cores:</dt><dd>${cores}</dd>
+  <dt>WebGPU:</dt><dd id="gpu-status">checking...</dd>
+  <dt>UA:</dt><dd style="font-size:.75rem;word-break:break-all">${navigator.userAgent}</dd>
+</dl>`;
+(async () => {
+  try {
+    if (navigator.gpu) {
+      const a = await navigator.gpu.requestAdapter();
+      document.getElementById("gpu-status").textContent = a ? "available" : "no adapter";
+    } else {
+      document.getElementById("gpu-status").textContent = "not available";
+    }
+  } catch { document.getElementById("gpu-status").textContent = "error"; }
+})();
 
 // --- Float16 LUT ---
 const f16LUT = new Float32Array(65536);
@@ -96,7 +139,26 @@ for (let i = 0; i < 65536; i++) {
   else f16LUT[i] = (sign ? -1 : 1) * 2 ** (exp - 15) * (1 + frac / 1024);
 }
 
-// --- Potion model (from app.js) ---
+// --- Popcount LUT ---
+const POPCNT8 = new Uint8Array(256);
+for (let i = 0; i < 256; i++) {
+  let n = i; n = n - ((n >> 1) & 0x55);
+  n = (n & 0x33) + ((n >> 2) & 0x33);
+  POPCNT8[i] = (n + (n >> 4)) & 0x0f;
+}
+
+// --- Data state ---
+let wordCount = 0;
+let fullEmbInt8, fullRangeMin, fullRangeScale;
+let fullEmbBinary;
+let fullEmbF16;
+let potionEmbInt8, potionRangeMin, potionRangeScale;
+let potionModel;
+let itqMean, itqR, itqReady = false;
+let dataLoaded = false;
+const RERANK_K = 500;
+
+// --- Potion model ---
 class PotionModel {
   constructor(vocabMap, matrixRaw, dims) {
     this.vocab = vocabMap; this.matrix = matrixRaw; this.dims = dims;
@@ -107,16 +169,18 @@ class PotionModel {
     const tokens = []; let i = 0;
     while (i < text.length) {
       if (/\s/.test(text[i])) { i++; continue; }
-      if (this._isPunct(text[i])) { tokens.push(text[i]); i++; continue; }
+      const cp = text.codePointAt(i);
+      const isPunct = (cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) || (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126);
+      if (isPunct) { tokens.push(text[i]); i++; continue; }
       let word = "";
-      while (i < text.length && !this._isPunct(text[i]) && !/\s/.test(text[i])) { word += text[i]; i++; }
+      while (i < text.length && !/\s/.test(text[i])) {
+        const cp2 = text.codePointAt(i);
+        if ((cp2 >= 33 && cp2 <= 47) || (cp2 >= 58 && cp2 <= 64) || (cp2 >= 91 && cp2 <= 96) || (cp2 >= 123 && cp2 <= 126)) break;
+        word += text[i]; i++;
+      }
       if (word) tokens.push(word);
     }
     return tokens;
-  }
-  _isPunct(ch) {
-    const cp = ch.codePointAt(0);
-    return (cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) || (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126);
   }
   _wordPiece(word) {
     if (this.vocab.has(word)) return [this.vocab.get(word)];
@@ -132,9 +196,9 @@ class PotionModel {
     }
     return ids;
   }
-  tokenize(text) { return this._preTokenize(text).flatMap(w => this._wordPiece(w)).filter(id => id !== this.unkId); }
   encode(text) {
-    const ids = this.tokenize(text);
+    const words = this._preTokenize(text);
+    const ids = words.flatMap(w => this._wordPiece(w)).filter(id => id !== this.unkId);
     if (ids.length === 0) return new Float32Array(this.dims);
     const vec = new Float32Array(this.dims);
     for (const id of ids) { const off = id * this.dims; for (let d = 0; d < this.dims; d++) vec[d] += f16LUT[this.matrix[off + d]]; }
@@ -145,214 +209,443 @@ class PotionModel {
   }
 }
 
-// --- Helpers ---
-function timeout(ms, p) { return Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error("timeout")), ms))]); }
-
-function scoreInt8(qvec, embData, rangeMin, rangeScale, dims, count) {
+// --- Scoring functions ---
+function scoreInt8(qvec, embData, rangeMin, rangeScale, dims, count, out) {
   const qScaled = new Float32Array(dims);
   let qOffset = 0;
   for (let d = 0; d < dims; d++) { qScaled[d] = qvec[d] * rangeScale[d] / 255; qOffset += qvec[d] * rangeMin[d]; }
-  let best = -Infinity;
   for (let i = 0; i < count; i++) {
     let dot = qOffset; const base = i * dims;
     for (let d = 0; d < dims; d++) dot += qScaled[d] * embData[base + d];
-    if (dot > best) best = dot;
+    out[i] = dot;
   }
-  return best; // return best score (just for validation)
 }
 
-// --- Shared data ---
-let potionModel, potionEmbInt8, potionRangeMin, potionRangeScale, wordCount;
-let fullEmbInt8, fullRangeMin, fullRangeScale;
-
-async function loadSharedData() {
-  log("Loading shared data (potion model, embeddings, word list)...");
-  const t0 = performance.now();
-
-  const [vocabText, matrixBuf, embBuf, rangesBuf, wordsJson] = await Promise.all([
-    fetch(`${DATA_ROOT}/vocab.txt`).then(r => r.text()),
-    fetch(`${DATA_ROOT}/potion_matrix.bin`).then(r => r.arrayBuffer()),
-    fetch(`${DATA_ROOT}/embeddings_potion_int8.bin`).then(r => r.arrayBuffer()),
-    fetch(`${DATA_ROOT}/embeddings_potion_ranges.bin`).then(r => r.arrayBuffer()),
-    fetch(`${DATA_ROOT}/words.json`).then(r => r.json()),
-  ]);
-
-  const vocabMap = new Map();
-  vocabText.split(/\r?\n/).forEach((line, i) => { if (line) vocabMap.set(line, i); });
-  potionModel = new PotionModel(vocabMap, new Uint16Array(matrixBuf), LITE_DIMS);
-  potionEmbInt8 = new Uint8Array(embBuf);
-  const rangesData = new Float32Array(rangesBuf);
-  potionRangeMin = rangesData.subarray(0, LITE_DIMS);
-  potionRangeScale = rangesData.subarray(LITE_DIMS, LITE_DIMS * 2);
-  wordCount = wordsJson.length;
-
-  // Full embeddings
-  const [fullEmbBuf, fullRangesBuf] = await Promise.all([
-    fetch(`${DATA_ROOT}/embeddings_int8.bin`).then(r => r.arrayBuffer()),
-    fetch(`${DATA_ROOT}/embeddings_ranges.bin`).then(r => r.arrayBuffer()),
-  ]);
-  fullEmbInt8 = new Uint8Array(fullEmbBuf);
-  const fullRangesData = new Float32Array(fullRangesBuf);
-  fullRangeMin = fullRangesData.subarray(0, FULL_DIMS);
-  fullRangeScale = fullRangesData.subarray(FULL_DIMS, FULL_DIMS * 2);
-
-  log(`Shared data loaded in ${((performance.now() - t0) / 1000).toFixed(2)}s (${wordCount} entries)`);
+function scoreHamming(qvec, binData, bytesPerEntry, count, out) {
+  const dims = bytesPerEntry * 8;
+  // Apply ITQ rotation if available
+  let rotated = qvec;
+  if (itqReady) {
+    rotated = new Float32Array(dims);
+    for (let d = 0; d < dims; d++) {
+      let sum = 0;
+      for (let k = 0; k < dims; k++) sum += (qvec[k] - itqMean[k]) * itqR[k * dims + d];
+      rotated[d] = sum;
+    }
+  }
+  const qBin = new Uint8Array(bytesPerEntry);
+  for (let b = 0; b < bytesPerEntry; b++) {
+    let byte = 0;
+    for (let bit = 0; bit < 8; bit++) {
+      if (rotated[b * 8 + bit] > 0) byte |= (128 >> bit);
+    }
+    qBin[b] = byte;
+  }
+  for (let i = 0; i < count; i++) {
+    const base = i * bytesPerEntry;
+    let dist = 0;
+    for (let b = 0; b < bytesPerEntry; b++) dist += POPCNT8[qBin[b] ^ binData[base + b]];
+    out[i] = (dims - 2 * dist) / dims;
+  }
 }
 
-// --- Test definitions ---
-const tests = [
-  { id: "lite",       name: "Lite (potion, pure JS)" },
-  { id: "full-wasm",  name: "Full (q4f16, WASM)" },
-  { id: "full-webgpu",name: "Full (q4f16, WebGPU)" },
-  { id: "full-q8-wasm", name: "Full (q8, WASM)" },
+function scoreBinaryRerank(qvec, count, out) {
+  const hamming = new Float32Array(count);
+  scoreHamming(qvec, fullEmbBinary, BINARY_BYTES, count, hamming);
+  // Find top RERANK_K by Hamming
+  const indices = Array.from({length: count}, (_, i) => i);
+  indices.sort((a, b) => hamming[b] - hamming[a]);
+  const k = Math.min(RERANK_K, count);
+  // Rerank with int8
+  const qScaled = new Float32Array(FULL_DIMS);
+  let qOffset = 0;
+  for (let d = 0; d < FULL_DIMS; d++) {
+    qScaled[d] = qvec[d] * fullRangeScale[d] / 255;
+    qOffset += qvec[d] * fullRangeMin[d];
+  }
+  for (let i = 0; i < count; i++) out[i] = -Infinity;
+  for (let j = 0; j < k; j++) {
+    const idx = indices[j];
+    let dot = qOffset;
+    const base = idx * FULL_DIMS;
+    for (let d = 0; d < FULL_DIMS; d++) dot += qScaled[d] * fullEmbInt8[base + d];
+    out[idx] = dot;
+  }
+}
+
+function scoreFloat16(qvec, f16Data, dims, count, out) {
+  for (let i = 0; i < count; i++) {
+    let dot = 0; const base = i * dims;
+    for (let d = 0; d < dims; d++) dot += qvec[d] * f16LUT[f16Data[base + d]];
+    out[i] = dot;
+  }
+}
+
+// --- Data loading ---
+async function loadData() {
+  try {
+    log("Loading data files...");
+    const t0 = performance.now();
+
+    const meta = await fetch(`${DATA_ROOT}/meta.json`).then(r => r.json());
+    wordCount = meta.count;
+
+    const [int8Buf, rangesBuf, binaryBuf, f16Buf, itqBuf, pInt8Buf, pRangesBuf, vocabText, matrixBuf] = await Promise.all([
+      fetch(`${DATA_ROOT}/embeddings_int8.bin`).then(r => r.arrayBuffer()),
+      fetch(`${DATA_ROOT}/embeddings_ranges.bin`).then(r => r.arrayBuffer()),
+      fetch(`${DATA_ROOT}/embeddings_binary.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
+      fetch(`${DATA_ROOT}/embeddings.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
+      fetch(`${DATA_ROOT}/embeddings_itq.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
+      fetch(`${DATA_ROOT}/embeddings_potion_int8.bin`).then(r => r.arrayBuffer()),
+      fetch(`${DATA_ROOT}/embeddings_potion_ranges.bin`).then(r => r.arrayBuffer()),
+      fetch(`${DATA_ROOT}/vocab.txt`).then(r => r.text()),
+      fetch(`${DATA_ROOT}/potion_matrix.bin`).then(r => r.arrayBuffer()),
+    ]);
+
+    fullEmbInt8 = new Uint8Array(int8Buf);
+    const rd = new Float32Array(rangesBuf);
+    fullRangeMin = rd.subarray(0, FULL_DIMS);
+    fullRangeScale = rd.subarray(FULL_DIMS, FULL_DIMS * 2);
+
+    if (binaryBuf) fullEmbBinary = new Uint8Array(binaryBuf);
+    if (f16Buf) fullEmbF16 = new Uint16Array(f16Buf);
+    if (itqBuf) {
+      const itqFloat = new Float32Array(itqBuf);
+      itqMean = itqFloat.subarray(0, FULL_DIMS);
+      itqR = itqFloat.subarray(FULL_DIMS, FULL_DIMS + FULL_DIMS * FULL_DIMS);
+      itqReady = true;
+    }
+
+    potionEmbInt8 = new Uint8Array(pInt8Buf);
+    const prd = new Float32Array(pRangesBuf);
+    potionRangeMin = prd.subarray(0, LITE_DIMS);
+    potionRangeScale = prd.subarray(LITE_DIMS, LITE_DIMS * 2);
+
+    const vocabMap = new Map();
+    vocabText.split(/\r?\n/).forEach((line, i) => { if (line) vocabMap.set(line, i); });
+    potionModel = new PotionModel(vocabMap, new Uint16Array(matrixBuf), LITE_DIMS);
+
+    dataLoaded = true;
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+    log(`Data loaded in ${elapsed}s: ${wordCount.toLocaleString()} entries`);
+    $status.className = "status ready";
+    $status.textContent = `Ready: ${wordCount.toLocaleString()} entries. Click a benchmark button to start.`;
+    $scoreBtn.disabled = false;
+    $e2eBtn.disabled = false;
+  } catch (e) {
+    $status.className = "status error";
+    $status.textContent = `Error: ${e.message}. Serve from wordfor/ directory.`;
+    log(`ERROR: ${e.message}`);
+  }
+}
+
+// --- Random query vector ---
+function randomQueryVec(dims) {
+  const vec = new Float32Array(dims);
+  for (let i = 0; i < dims; i++) vec[i] = Math.random() * 2 - 1;
+  let norm = 0;
+  for (let i = 0; i < dims; i++) norm += vec[i] * vec[i];
+  norm = Math.sqrt(norm) || 1e-32;
+  for (let i = 0; i < dims; i++) vec[i] /= norm;
+  return vec;
+}
+
+// --- Scoring benchmark ---
+function benchScoreMethod(name, scoreFn, dims) {
+  const out = new Float32Array(wordCount);
+  const times = [];
+  for (let w = 0; w < SCORE_WARMUP; w++) scoreFn(randomQueryVec(dims), out);
+  for (let r = 0; r < SCORE_ITERS; r++) {
+    const q = randomQueryVec(dims);
+    const t0 = performance.now();
+    scoreFn(q, out);
+    times.push(performance.now() - t0);
+  }
+  times.sort((a, b) => a - b);
+  return {
+    name,
+    avg: times.reduce((s, t) => s + t, 0) / times.length,
+    p50: times[Math.floor(times.length * 0.5)],
+    p99: times[Math.floor(times.length * 0.99)],
+  };
+}
+
+window.runScoringBench = async function() {
+  $scoreBtn.disabled = true;
+  $status.className = "status loading";
+  $status.textContent = "Running scoring benchmark...";
+  $scoreBody.innerHTML = "";
+  $scoreTable.style.display = "";
+  log("\n=== Scoring Benchmark ===");
+  await new Promise(r => setTimeout(r, 50));
+
+  const results = [];
+
+  // Full int8 (384d)
+  log("  Benchmarking: Full int8 (384d)...");
+  results.push(benchScoreMethod("Full int8 (384d)", (q, out) => scoreInt8(q, fullEmbInt8, fullRangeMin, fullRangeScale, FULL_DIMS, wordCount, out), FULL_DIMS));
+  await new Promise(r => setTimeout(r, 10));
+
+  // Full binary (384d): ITQ-rotated
+  if (fullEmbBinary) {
+    log("  Benchmarking: Full binary (384d)...");
+    results.push(benchScoreMethod("Full binary (384d)", (q, out) => scoreHamming(q, fullEmbBinary, BINARY_BYTES, wordCount, out), FULL_DIMS));
+    await new Promise(r => setTimeout(r, 10));
+  }
+
+  // Binary + int8 rerank
+  if (fullEmbBinary && fullEmbInt8) {
+    log("  Benchmarking: Binary+int8 rerank...");
+    results.push(benchScoreMethod("Binary+int8 rerank", (q, out) => scoreBinaryRerank(q, wordCount, out), FULL_DIMS));
+    await new Promise(r => setTimeout(r, 10));
+  }
+
+  // Full float16 (384d)
+  if (fullEmbF16) {
+    log("  Benchmarking: Full float16 (384d)...");
+    results.push(benchScoreMethod("Full float16 (384d)", (q, out) => scoreFloat16(q, fullEmbF16, FULL_DIMS, wordCount, out), FULL_DIMS));
+    await new Promise(r => setTimeout(r, 10));
+  }
+
+  // Potion int8 (256d)
+  log("  Benchmarking: Potion int8 (256d)...");
+  results.push(benchScoreMethod("Potion int8 (256d)", (q, out) => scoreInt8(q, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, wordCount, out), LITE_DIMS));
+
+  // Render table
+  const fastestAvg = Math.min(...results.map(r => r.avg));
+  const sizes = {
+    "Full int8 (384d)": `${(fullEmbInt8.byteLength / 1e6).toFixed(0)} MB`,
+    "Full binary (384d)": fullEmbBinary ? `${(fullEmbBinary.byteLength / 1e6).toFixed(0)} MB` : "N/A",
+    "Binary+int8 rerank": fullEmbBinary && fullEmbInt8 ? `${((fullEmbBinary.byteLength + fullEmbInt8.byteLength) / 1e6).toFixed(0)} MB` : "N/A",
+    "Full float16 (384d)": fullEmbF16 ? `${(fullEmbF16.byteLength / 1e6).toFixed(0)} MB` : "N/A",
+    "Potion int8 (256d)": `${(potionEmbInt8.byteLength / 1e6).toFixed(0)} MB`,
+  };
+
+  for (const r of results) {
+    const ratio = r.avg / fastestAvg;
+    const pctWidth = Math.min(100, (fastestAvg / r.avg) * 100);
+    const barClass = ratio <= 1.2 ? "" : ratio <= 2.5 ? "med" : "slow";
+    const isBest = Math.abs(r.avg - fastestAvg) < 0.01;
+    const tr = document.createElement("tr");
+    if (isBest) tr.className = "best";
+    tr.innerHTML = `
+      <td>${r.name}</td>
+      <td class="num">${sizes[r.name] || "?"}</td>
+      <td class="num">${r.avg.toFixed(1)}</td>
+      <td class="num">${r.p50.toFixed(1)}</td>
+      <td class="num">${r.p99.toFixed(1)}</td>
+      <td><div class="bar"><div class="bar-fill ${barClass}" style="width:${pctWidth}%"></div></div> ${ratio.toFixed(1)}x</td>`;
+    $scoreBody.appendChild(tr);
+    log(`  ${r.name}: avg=${r.avg.toFixed(1)}ms p50=${r.p50.toFixed(1)}ms p99=${r.p99.toFixed(1)}ms (${ratio.toFixed(1)}x)`);
+  }
+
+  $status.className = "status ready";
+  $status.textContent = `Scoring benchmark done. ${SCORE_ITERS} iterations, ${wordCount.toLocaleString()} entries.`;
+  $scoreBtn.disabled = false;
+  log("  Scoring benchmark complete.\n");
+};
+
+// --- E2E benchmark ---
+const E2E_TESTS = [
+  { id: "lite", name: "Lite (potion, pure JS)" },
+  { id: "lite-wasm", name: "Lite (potion, WASM)" },
+  { id: "full-wasm", name: "Full (q8, WASM)" },
+  { id: "full-binary-rerank", name: "Full (q8+binary rerank, WASM)" },
+  { id: "full-binary-only", name: "Full (q8+binary only, WASM)" },
+  { id: "full-webgpu", name: "Full (q4f16, WebGPU)" },
 ];
 
-function addRow(test) {
+function addE2ERow(test) {
   const tr = document.createElement("tr");
   tr.id = `row-${test.id}`;
-  tr.innerHTML = `<td>${test.name}</td><td class="running">pending</td><td>—</td><td>—</td><td></td>`;
-  $results.appendChild(tr);
+  tr.innerHTML = `<td>${test.name}</td><td class="running">pending</td><td>-</td><td>-</td><td></td>`;
+  $e2eResults.appendChild(tr);
 }
 
-function updateRow(id, status, loadTime, queryAvg, notes) {
+function updateE2ERow(id, status, loadTime, queryAvg, notes) {
   const tr = document.getElementById(`row-${id}`);
   if (!tr) return;
   const cls = status === "done" ? "done" : status === "fail" ? "fail" : status === "skip" ? "skip" : "running";
   tr.children[1].className = cls;
   tr.children[1].textContent = status;
-  tr.children[2].textContent = loadTime != null ? loadTime.toFixed(2) : "—";
-  tr.children[3].textContent = queryAvg != null ? queryAvg.toFixed(1) : "—";
+  tr.children[2].textContent = loadTime != null ? loadTime.toFixed(2) : "-";
+  tr.children[3].textContent = queryAvg != null ? queryAvg.toFixed(1) : "-";
   tr.children[4].textContent = notes || "";
 }
 
-// --- Lite benchmark ---
-async function benchLite() {
-  log("=== Lite mode (potion, pure JS) ===");
-  updateRow("lite", "running...");
-  const t0 = performance.now();
-  // Model already loaded in shared data
-  const loadTime = 0; // already loaded
-  log(`  Potion model ready (loaded with shared data)`);
+function timeout(ms, p) { return Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error("timeout")), ms))]); }
 
-  const times = [];
+window.runE2E = async function() {
+  $e2eBtn.disabled = true;
+  $e2eResults.innerHTML = "";
+  E2E_TESTS.forEach(addE2ERow);
+  log("\n=== E2E Benchmark ===");
+
+  // Lite
+  updateE2ERow("lite", "running...");
+  const liteTimes = [];
   for (const q of QUERIES) {
     const t = performance.now();
     const vec = potionModel.encode(q);
-    scoreInt8(vec, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, wordCount);
-    times.push(performance.now() - t);
-    log(`  "${q}" → ${times[times.length - 1].toFixed(1)} ms`);
+    const out = new Float32Array(wordCount);
+    scoreInt8(vec, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, wordCount, out);
+    liteTimes.push(performance.now() - t);
   }
+  const liteAvg = liteTimes.reduce((a, b) => a + b, 0) / liteTimes.length;
+  updateE2ERow("lite", "done", 0, liteAvg, `${LITE_DIMS}d, scoring only (no model load)`);
+  log(`  Lite (JS): avg=${liteAvg.toFixed(1)}ms`);
 
-  const avg = times.reduce((a, b) => a + b, 0) / times.length;
-  updateRow("lite", "done", loadTime, avg, `${LITE_DIMS}d, ${(potionEmbInt8.byteLength / 1e6).toFixed(0)} MB emb`);
-  log(`  Average query: ${avg.toFixed(1)} ms\n`);
-  return { loadTime, queryAvg: avg };
-}
-
-// --- Full mode benchmark ---
-async function benchFull(id, dtype, deviceName) {
-  log(`=== Full mode (${dtype}, ${deviceName}) ===`);
-  updateRow(id, "loading...");
-
-  if (deviceName === "webgpu" && !navigator.gpu) {
-    updateRow(id, "skip", null, null, "WebGPU not available");
-    log("  Skipped — WebGPU not available\n");
-    return null;
-  }
-
-  let device = deviceName;
-  if (device === "webgpu") {
-    try {
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) throw new Error("no adapter");
-    } catch {
-      updateRow(id, "skip", null, null, "WebGPU adapter failed");
-      log("  Skipped — WebGPU adapter failed\n");
-      return null;
-    }
-  }
-
+  // Lite WASM
   try {
-    const t0 = performance.now();
-    const { AutoModel, AutoTokenizer, env } = await import(
-      "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4"
-    );
-    env.allowLocalModels = true;
-    env.allowRemoteModels = false;
-
-    log(`  Transformers.js imported in ${((performance.now() - t0) / 1000).toFixed(2)}s`);
-    updateRow(id, "compiling model...");
-
-    const tModel = performance.now();
-    const [tokenizer, model] = await Promise.all([
-      AutoTokenizer.from_pretrained(FULL_MODEL_ID),
-      timeout(120_000, AutoModel.from_pretrained(FULL_MODEL_ID, { dtype, device })),
+    updateE2ERow("lite-wasm", "loading...");
+    const lw0 = performance.now();
+    const wasmModule = await import("./data/wasm/model2vec_wasm.js");
+    await wasmModule.default();
+    const [tokBytes, modelBytes, cfgBytes] = await Promise.all([
+      fetch("data/wasm/tokenizer.json").then(r => r.arrayBuffer()).then(b => new Uint8Array(b)),
+      fetch("data/wasm/model.safetensors").then(r => r.arrayBuffer()).then(b => new Uint8Array(b)),
+      fetch("data/wasm/config.json").then(r => r.arrayBuffer()).then(b => new Uint8Array(b)),
     ]);
-    const modelLoadTime = (performance.now() - tModel) / 1000;
-    log(`  Model loaded in ${modelLoadTime.toFixed(2)}s (${dtype}, ${device})`);
-
-    // Warmup
-    updateRow(id, "warming up...");
-    const warmInput = await tokenizer("warm up", { padding: true, truncation: true });
-    await timeout(60_000, model(warmInput));
-    log(`  Warmup done`);
-
-    const loadTime = (performance.now() - t0) / 1000;
-    updateRow(id, "querying...");
-
-    // Query benchmark
-    const times = [];
+    const wasmModel = new wasmModule.Model(tokBytes, modelBytes, cfgBytes);
+    const lwLoad = (performance.now() - lw0) / 1000;
+    updateE2ERow("lite-wasm", "querying...");
+    const lwTimes = [];
     for (const q of QUERIES) {
       const t = performance.now();
-      const inputs = await tokenizer(
-        "Represent this sentence for searching relevant passages: " + q,
-        { padding: true, truncation: true }
-      );
-      const { sentence_embedding } = await model(inputs);
-      const emb1024 = sentence_embedding.data;
-      // MRL truncation to 384d
-      const vec = new Float32Array(FULL_DIMS);
-      for (let i = 0; i < FULL_DIMS; i++) vec[i] = emb1024[i];
-      let norm = 0;
-      for (let i = 0; i < FULL_DIMS; i++) norm += vec[i] * vec[i];
-      norm = Math.sqrt(norm) || 1e-32;
-      for (let i = 0; i < FULL_DIMS; i++) vec[i] /= norm;
-      scoreInt8(vec, fullEmbInt8, fullRangeMin, fullRangeScale, FULL_DIMS, wordCount);
-      times.push(performance.now() - t);
-      log(`  "${q}" → ${times[times.length - 1].toFixed(1)} ms`);
+      const vec = wasmModel.encode_single(q);
+      const out = new Float32Array(wordCount);
+      scoreInt8(vec, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, wordCount, out);
+      lwTimes.push(performance.now() - t);
+    }
+    const lwAvg = lwTimes.reduce((a, b) => a + b, 0) / lwTimes.length;
+    updateE2ERow("lite-wasm", "done", lwLoad, lwAvg, `${LITE_DIMS}d, WASM tokenizer`);
+    log(`  Lite (WASM): load=${lwLoad.toFixed(1)}s, avg=${lwAvg.toFixed(1)}ms`);
+  } catch (err) {
+    updateE2ERow("lite-wasm", "fail", null, null, err.message);
+    log(`  Lite (WASM): FAILED - ${err.message}`);
+  }
+
+  // Full (various backends)
+  // We'll reuse the first-loaded model for the binary test
+  let cachedTokenizer = null, cachedModel = null;
+  for (const test of E2E_TESTS.slice(2)) {
+    const isBinaryRerankTest = test.id === "full-binary-rerank";
+    const isBinaryOnlyTest = test.id === "full-binary-only";
+    const deviceName = test.id.includes("webgpu") ? "webgpu" : "wasm";
+    const dtype = test.id.includes("webgpu") ? "q4f16" : "q8";
+    updateE2ERow(test.id, "loading...");
+
+    // Binary tests reuse the cached WASM model
+    if (isBinaryRerankTest || isBinaryOnlyTest) {
+      if (!cachedTokenizer || !cachedModel || !fullEmbBinary) {
+        updateE2ERow(test.id, "skip", null, null, "Requires WASM model + binary data");
+        log(`  ${test.name}: skipped`);
+        continue;
+      }
+      updateE2ERow(test.id, "querying...");
+      const times = [];
+      for (const q of QUERIES) {
+        const t = performance.now();
+        const inputs = await cachedTokenizer("Represent this sentence for searching relevant passages: " + q, { padding: true, truncation: true });
+        const { sentence_embedding } = await cachedModel(inputs);
+        const emb1024 = sentence_embedding.data;
+        const vec = new Float32Array(FULL_DIMS);
+        for (let i = 0; i < FULL_DIMS; i++) vec[i] = emb1024[i];
+        let norm = 0;
+        for (let i = 0; i < FULL_DIMS; i++) norm += vec[i] * vec[i];
+        norm = Math.sqrt(norm) || 1e-32;
+        for (let i = 0; i < FULL_DIMS; i++) vec[i] /= norm;
+        const out = new Float32Array(wordCount);
+        if (isBinaryRerankTest) {
+          scoreBinaryRerank(vec, wordCount, out);
+        } else {
+          scoreHamming(vec, fullEmbBinary, BINARY_BYTES, wordCount, out);
+        }
+        times.push(performance.now() - t);
+      }
+      const avg = times.reduce((a, b) => a + b, 0) / times.length;
+      const notes = isBinaryRerankTest ? "binary+int8 rerank (model cached)" : "pure binary ITQ (model cached, mobile path)";
+      updateE2ERow(test.id, "done", 0, avg, notes);
+      log(`  ${test.name}: avg=${avg.toFixed(1)}ms (model cached)`);
+      continue;
     }
 
-    const avg = times.reduce((a, b) => a + b, 0) / times.length;
-    updateRow(id, "done", loadTime, avg, `${FULL_DIMS}d, ${dtype}, ${device}`);
-    log(`  Load: ${loadTime.toFixed(2)}s, Avg query: ${avg.toFixed(1)} ms\n`);
-    return { loadTime, queryAvg: avg };
-  } catch (err) {
-    updateRow(id, "fail", null, null, err.message);
-    log(`  FAILED: ${err.message}\n`);
-    return null;
+    if (deviceName === "webgpu" && (!navigator.gpu)) {
+      updateE2ERow(test.id, "skip", null, null, "WebGPU not available");
+      log(`  ${test.name}: skipped (no WebGPU)`);
+      continue;
+    }
+    if (deviceName === "webgpu") {
+      try {
+        const a = await navigator.gpu.requestAdapter();
+        if (!a) throw new Error("no adapter");
+      } catch {
+        updateE2ERow(test.id, "skip", null, null, "WebGPU adapter failed");
+        continue;
+      }
+    }
+
+    try {
+      const t0 = performance.now();
+      const { AutoModel, AutoTokenizer, env } = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@4");
+      env.allowLocalModels = true;
+      env.allowRemoteModels = false;
+
+      updateE2ERow(test.id, "compiling...");
+      const [tokenizer, model] = await Promise.all([
+        AutoTokenizer.from_pretrained(FULL_MODEL_ID),
+        timeout(120_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
+          dtype, device: deviceName,
+          session_options: { enableCpuMemArena: false },
+        })),
+      ]);
+
+      // Cache for reuse (e.g., binary rerank test)
+      if (deviceName === "wasm") {
+        cachedTokenizer = tokenizer;
+        cachedModel = model;
+      }
+
+      // Warmup
+      updateE2ERow(test.id, "warming up...");
+      const warmInput = await tokenizer("warm up", { padding: true, truncation: true });
+      await timeout(60_000, model(warmInput));
+
+      const loadTime = (performance.now() - t0) / 1000;
+      updateE2ERow(test.id, "querying...");
+
+      const times = [];
+      for (const q of QUERIES) {
+        const t = performance.now();
+        const inputs = await tokenizer("Represent this sentence for searching relevant passages: " + q, { padding: true, truncation: true });
+        const { sentence_embedding } = await model(inputs);
+        const emb1024 = sentence_embedding.data;
+        const vec = new Float32Array(FULL_DIMS);
+        for (let i = 0; i < FULL_DIMS; i++) vec[i] = emb1024[i];
+        let norm = 0;
+        for (let i = 0; i < FULL_DIMS; i++) norm += vec[i] * vec[i];
+        norm = Math.sqrt(norm) || 1e-32;
+        for (let i = 0; i < FULL_DIMS; i++) vec[i] /= norm;
+        const out = new Float32Array(wordCount);
+        scoreInt8(vec, fullEmbInt8, fullRangeMin, fullRangeScale, FULL_DIMS, wordCount, out);
+        times.push(performance.now() - t);
+      }
+
+      const avg = times.reduce((a, b) => a + b, 0) / times.length;
+      updateE2ERow(test.id, "done", loadTime, avg, `${dtype}, ${deviceName}`);
+      log(`  ${test.name}: load=${loadTime.toFixed(1)}s, avg=${avg.toFixed(1)}ms`);
+    } catch (err) {
+      updateE2ERow(test.id, "fail", null, null, err.message);
+      log(`  ${test.name}: FAILED - ${err.message}`);
+    }
   }
-}
 
-// --- Run all ---
-window.runAll = async function() {
-  $btn.disabled = true;
-  $results.innerHTML = "";
-  $log.textContent = "";
-  tests.forEach(addRow);
-
-  log("Starting benchmarks...\n");
-  log(`Device: ${isMobile ? "Mobile" : "Desktop"}, Memory: ${mem}, Cores: ${cores}, WebGPU: ${gpu}\n`);
-
-  await loadSharedData();
-
-  await benchLite();
-  await benchFull("full-wasm", "q4f16", "wasm");
-  await benchFull("full-webgpu", "q4f16", "webgpu");
-  await benchFull("full-q8-wasm", "q8", "wasm");
-
-  log("=== All benchmarks complete ===");
-  $btn.disabled = false;
+  $e2eBtn.disabled = false;
+  log("  E2E benchmark complete.\n");
 };
+
+// --- Boot ---
+loadData();
 </script>
 </body>
 </html>

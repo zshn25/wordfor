@@ -401,18 +401,18 @@ async function loadFullModel() {
   const { AutoModel, AutoTokenizer, device } = await tfPromise;
   setProgress("tf", 40);
 
-  // Try q8 first; on iOS Safari WASM OOM, fall back to q4 with reduced memory
+  // Try q8 first; on iOS Safari WASM OOM, fall back to q4f16 with reduced memory
   let tokenizer, model;
   tokenizer = await AutoTokenizer.from_pretrained(FULL_MODEL_ID);
   try {
-    model = await timeout(90_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
+    model = await timeout(BINARY_ONLY ? 30_000 : 90_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
       dtype: "q8", device,
       session_options: { enableCpuMemArena: false },
     }));
   } catch (e) {
-    console.warn("q8 model failed, trying q4 with reduced memory:", e.message);
+    console.warn("q8 model failed, trying q4f16 with reduced memory:", e.message);
     model = await timeout(90_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
-      dtype: "q4", device,
+      dtype: "q4f16", device,
       session_options: { enableCpuMemArena: false },
     }));
   }
@@ -1198,7 +1198,6 @@ document.querySelectorAll(".example-chip").forEach(chip => {
     stopShowcase();
     $input.value = chip.dataset.query;
     search(chip.dataset.query);
-    $input.focus();
   });
 });
 
