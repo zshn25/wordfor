@@ -54,6 +54,8 @@ button{cursor:pointer;border:none;background:none;font:inherit;color:inherit}
 .header{background:rgba(255,255,255,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
 .header-row{display:flex;align-items:center;justify-content:space-between;height:56px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.1rem;color:var(--text);text-decoration:none}
+.brand:hover{text-decoration:none}
+.brand:hover .brand-name{text-decoration:underline}
 .brand-icon{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--purple));color:#fff;font:bold 18px/34px Georgia,serif;text-align:center;display:inline-block;box-shadow:0 2px 8px rgba(79,70,229,.2)}
 .nav-links{display:flex;gap:20px;align-items:center}
 .nav-links a{font-size:.9rem;color:var(--text-2);font-weight:500;transition:color .15s}

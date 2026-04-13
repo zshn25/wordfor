@@ -94,6 +94,10 @@ function setProgress(id, pct) {
 function shouldUseLiteMode() {
   const params = new URLSearchParams(location.search);
   if (params.get("mode") === "lite") return true;
+  if (params.get("mode") === "full") return false;
+  // iOS Safari can't load ONNX models (WASM OOM for both q8 and q4f16)
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) return true;
   return false;
 }
 
@@ -238,6 +242,7 @@ let potionRangeScale;   // Float32Array(256): per-dim range
 
 // Full-mode int8 embeddings (for reranking stage 2)
 let fullEmbInt8;        // Uint8Array : int8 quantized full embeddings
+let fullEmbInt4;        // Uint8Array : int4 packed full embeddings (2 nibbles/byte)
 let fullRangeMin;       // Float32Array(384): per-dim min
 let fullRangeScale;     // Float32Array(384): per-dim range
 
@@ -367,18 +372,13 @@ function timeout(ms, promise) {
 
 async function loadFullModel() {
   addProgressRow("tf",    "AI model (~22 MB)");
-  if (!BINARY_ONLY) {
-    addProgressRow("femb",  "Dictionary vectors (~73 MB)");
-  } else {
-    addProgressRow("femb",  "Dictionary vectors (~9 MB)");
-  }
+  addProgressRow("femb",  "Dictionary vectors (~9 MB)");
 
   const tfPromise = loadTransformers();
 
   // Binary embeddings (~8 MB): primary scoring (fast Hamming)
-  const binaryPromise = fetch(`${DATA_ROOT}/embeddings_binary.bin`)
-    .then(r => r.ok ? r.arrayBuffer() : null)
-    .then(buf => buf ? new Uint8Array(buf) : null)
+  const binaryPromise = fetchWithProgress(`${DATA_ROOT}/embeddings_binary.bin`, "femb")
+    .then(buf => new Uint8Array(buf))
     .catch(() => null);
 
   // ITQ calibration (~577 KB): rotation matrix for binary scoring
@@ -386,39 +386,38 @@ async function loadFullModel() {
     .then(r => r.ok ? r.arrayBuffer() : null)
     .catch(() => null);
 
-  // Int8 embeddings (~65 MB): used for reranking binary candidates
-  // Skipped in binary-only mode (mobile) to save bandwidth
-  let int8Promise, rangesPromise;
-  if (!BINARY_ONLY) {
-    int8Promise = fetchWithProgress(`${DATA_ROOT}/embeddings_int8.bin`, "femb")
-      .then(buf => new Uint8Array(buf));
-    rangesPromise = fetch(`${DATA_ROOT}/embeddings_ranges.bin`)
-      .then(r => r.arrayBuffer()).then(buf => new Float32Array(buf));
-  } else {
-    setProgress("femb", 100);
-  }
+  // Int8 embeddings loaded lazily after app is shown (loadFullInt8)
 
   const { AutoModel, AutoTokenizer, device } = await tfPromise;
-  setProgress("tf", 40);
+  setProgress("tf", 20);
 
   // Try q8 first; on iOS Safari WASM OOM, fall back to q4f16 with reduced memory
   let tokenizer, model;
   tokenizer = await AutoTokenizer.from_pretrained(FULL_MODEL_ID);
+  const modelProgress = (p) => {
+    // p.progress goes 0-100 for each file download; map to 20%-80% range
+    if (p.status === "progress" && p.progress != null) {
+      setProgress("tf", 20 + p.progress * 0.6);
+    }
+  };
   try {
     model = await timeout(BINARY_ONLY ? 30_000 : 90_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
       dtype: "q8", device,
       session_options: { enableCpuMemArena: false },
+      progress_callback: modelProgress,
     }));
   } catch (e) {
     console.warn("q8 model failed, trying q4f16 with reduced memory:", e.message);
-    model = await timeout(90_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
+    setProgress("tf", 20);
+    model = await timeout(BINARY_ONLY ? 45_000 : 90_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
       dtype: "q4f16", device,
       session_options: { enableCpuMemArena: false },
+      progress_callback: modelProgress,
     }));
   }
   fullTokenizer = tokenizer;
   fullModel = model;
-  setProgress("tf", 80);
+  setProgress("tf", 85);
 
   // Warm up: run a dummy inference so first real query is fast
   const warmInput = await fullTokenizer("warm up", { padding: true, truncation: true });
@@ -440,20 +439,48 @@ async function loadFullModel() {
     itqReady = true;
   }
 
-  // Load int8 embeddings (for reranking): skipped in binary-only mode
-  if (!BINARY_ONLY) {
-    try {
-      const [int8Data, rangesData] = await Promise.all([int8Promise, rangesPromise]);
-      fullEmbInt8    = int8Data;
-      fullRangeMin   = rangesData.subarray(0, FULL_DIMS);
-      fullRangeScale = rangesData.subarray(FULL_DIMS, FULL_DIMS * 2);
-    } catch (e) {
-      console.warn("Int8 embeddings failed, using binary-only scoring:", e.message);
-    }
-  }
-
   fullReady = true;
   DIMS = FULL_DIMS;
+}
+
+/**
+ * Lazy-load reranking embeddings (desktop only).
+ * Tries int4 (~33 MB) first, falls back to int8 (~65 MB).
+ * The app starts with binary-only scoring and upgrades silently.
+ */
+async function loadFullRerank() {
+  if (BINARY_ONLY) return;
+  try {
+    // Try int4 first (half the size of int8)
+    const [int4Buf, rangesBuf] = await Promise.all([
+      fetch(`${DATA_ROOT}/embeddings_int4.bin`).then(r => {
+        if (!r.ok) throw new Error("int4 not found");
+        return r.arrayBuffer();
+      }),
+      fetch(`${DATA_ROOT}/embeddings_ranges.bin`).then(r => r.arrayBuffer()),
+    ]);
+    fullEmbInt4    = new Uint8Array(int4Buf);
+    const rd       = new Float32Array(rangesBuf);
+    fullRangeMin   = rd.subarray(0, FULL_DIMS);
+    fullRangeScale = rd.subarray(FULL_DIMS, FULL_DIMS * 2);
+    console.log("Loaded int4 reranking embeddings");
+    return;
+  } catch (e) {
+    console.log("Int4 not available, trying int8:", e.message);
+  }
+  try {
+    const [int8Buf, rangesBuf] = await Promise.all([
+      fetch(`${DATA_ROOT}/embeddings_int8.bin`).then(r => r.arrayBuffer()),
+      fetch(`${DATA_ROOT}/embeddings_ranges.bin`).then(r => r.arrayBuffer()),
+    ]);
+    fullEmbInt8    = new Uint8Array(int8Buf);
+    const rd       = new Float32Array(rangesBuf);
+    fullRangeMin   = rd.subarray(0, FULL_DIMS);
+    fullRangeScale = rd.subarray(FULL_DIMS, FULL_DIMS * 2);
+    console.log("Loaded int8 reranking embeddings");
+  } catch (e) {
+    console.warn("Reranking embeddings failed, using binary-only scoring:", e.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -542,7 +569,7 @@ async function init() {
   if (MODE === "full") {
     $loaderNote.textContent = BINARY_ONLY
       ? "First visit downloads ~30 MB (cached for future visits)"
-      : "First visit downloads ~95 MB (cached for future visits)";
+      : "First visit downloads ~55 MB (cached for future visits)";
     const wordsPromise = loadWordList();
     const fullPromise = loadFullModel().catch(err => {
       console.warn("Full model load failed, falling back to lite:", err.message);
@@ -574,6 +601,9 @@ async function init() {
 
   // Lazy-load Wiktionary supplement (non-blocking, enhances results silently)
   loadWikiData().catch(e => console.warn("Wiki load:", e.message));
+
+  // Lazy-load reranking embeddings (non-blocking, upgrades from binary-only)
+  loadFullRerank().catch(e => console.warn("Rerank load:", e.message));
 }
 
 // ---------------------------------------------------------------------------
@@ -723,7 +753,7 @@ function scoreHamming(qvec, binData, bytesPerEntry, count, out) {
 }
 
 /**
- * Two-stage scoring: binary Hamming first-pass, then int8 dot product reranking.
+ * Two-stage scoring: binary Hamming first-pass, then int4/int8 dot product reranking.
  * Returns float32 scores for all entries (non-candidates get -Infinity).
  */
 function scoreBinaryRerank(qvec, count, out) {
@@ -734,26 +764,47 @@ function scoreBinaryRerank(qvec, count, out) {
   // Stage 2: Find top RERANK_K candidates by Hamming score
   const topIdx = new Int32Array(count);
   for (let i = 0; i < count; i++) topIdx[i] = i;
-  // Partial sort: partition around RERANK_K-th element
   const k = Math.min(RERANK_K, count);
   nthElement(topIdx, hamming, 0, count - 1, k);
 
-  // Rerank top candidates with int8 dot product
-  const qScaled = new Float32Array(FULL_DIMS);
-  let qOffset = 0;
-  for (let d = 0; d < FULL_DIMS; d++) {
-    qScaled[d] = qvec[d] * fullRangeScale[d] / 255;
-    qOffset += qvec[d] * fullRangeMin[d];
-  }
-
   // Fill all with -Infinity, then overwrite reranked candidates
   for (let i = 0; i < count; i++) out[i] = -Infinity;
-  for (let j = 0; j < k; j++) {
-    const idx = topIdx[j];
-    let dot = qOffset;
-    const base = idx * FULL_DIMS;
-    for (let d = 0; d < FULL_DIMS; d++) dot += qScaled[d] * fullEmbInt8[base + d];
-    out[idx] = dot;
+
+  if (fullEmbInt4) {
+    // Rerank with int4 (packed nibbles)
+    const qScaled = new Float32Array(FULL_DIMS);
+    let qOffset = 0;
+    for (let d = 0; d < FULL_DIMS; d++) {
+      qScaled[d] = qvec[d] * fullRangeScale[d] / 15;
+      qOffset += qvec[d] * fullRangeMin[d];
+    }
+    const halfDims = FULL_DIMS >> 1;
+    for (let j = 0; j < k; j++) {
+      const idx = topIdx[j];
+      let dot = qOffset;
+      const base = idx * halfDims;
+      for (let d = 0; d < FULL_DIMS; d += 2) {
+        const packed = fullEmbInt4[base + (d >> 1)];
+        dot += qScaled[d]     * (packed >> 4);
+        dot += qScaled[d + 1] * (packed & 0x0F);
+      }
+      out[idx] = dot;
+    }
+  } else {
+    // Rerank with int8
+    const qScaled = new Float32Array(FULL_DIMS);
+    let qOffset = 0;
+    for (let d = 0; d < FULL_DIMS; d++) {
+      qScaled[d] = qvec[d] * fullRangeScale[d] / 255;
+      qOffset += qvec[d] * fullRangeMin[d];
+    }
+    for (let j = 0; j < k; j++) {
+      const idx = topIdx[j];
+      let dot = qOffset;
+      const base = idx * FULL_DIMS;
+      for (let d = 0; d < FULL_DIMS; d++) dot += qScaled[d] * fullEmbInt8[base + d];
+      out[idx] = dot;
+    }
   }
 }
 
@@ -823,14 +874,16 @@ async function search(query) {
   const qvec   = await embedQuery(query);
   const scored = new Float32Array(count);
 
+  const rerankReady = fullEmbInt4 || fullEmbInt8;
+
   if (fullReady) {
-    if (fullBinaryReady && fullEmbInt8) {
-      // Best: binary first-pass + int8 reranking (near float32 quality, binary speed)
+    if (fullBinaryReady && rerankReady) {
+      // Best: binary first-pass + int4/int8 reranking
       scoreBinaryRerank(qvec, count, scored);
     } else if (fullBinaryReady) {
-      // Binary-only fallback (int8 failed to load)
+      // Binary-only fallback (reranking data not yet loaded)
       scoreHamming(qvec, fullEmbBinary, FULL_BINARY_BYTES, count, scored);
-    } else {
+    } else if (fullEmbInt8) {
       // No binary data: pure int8 fallback
       scoreInt8(qvec, fullEmbInt8, fullRangeMin, fullRangeScale, FULL_DIMS, count, scored);
     }
@@ -839,24 +892,33 @@ async function search(query) {
   }
   applyQualityWeights(scored, count);
 
-  // Score wiki entries if loaded
+  // Score wiki entries if loaded — use SAME scoring method as main dictionary
   let wikiScored = null;
   if (wikiReady && wikiEntries && wikiEntries.length > 0) {
     const wc = wikiEntries.length;
     wikiScored = new Float32Array(wc);
     if (fullReady) {
-      if (fullBinaryReady && wikiEmbBinary && wikiEmbInt8 && wikiRangeMin) {
-        // Binary rerank for wiki
+      if (fullBinaryReady && rerankReady && wikiEmbBinary && wikiEmbInt8 && wikiRangeMin) {
+        // Both main and wiki use binary+rerank (scores on same scale)
         scoreBinaryRerankWiki(qvec, wc, wikiScored);
       } else if (wikiEmbBinary && fullBinaryReady) {
+        // Both use pure binary Hamming (scores on same [-1,1] scale)
         scoreHamming(qvec, wikiEmbBinary, FULL_BINARY_BYTES, wc, wikiScored);
-      } else if (wikiEmbInt8 && wikiRangeMin) {
+      } else if (fullEmbInt8 && wikiEmbInt8 && wikiRangeMin) {
+        // Both use pure int8
         scoreInt8(qvec, wikiEmbInt8, wikiRangeMin, wikiRangeScale, FULL_DIMS, wc, wikiScored);
       }
     } else if (wikiPotionInt8 && wikiPotionRangeMin && potionModel) {
       const potionVec = potionModel.encode(query);
       scoreInt8(potionVec, wikiPotionInt8, wikiPotionRangeMin, wikiPotionRangeScale, LITE_DIMS, wc, wikiScored);
     }
+  }
+
+  // Dampen wiki scores: supplement entries should not outrank main dictionary
+  // unless they are significantly more relevant
+  if (wikiScored) {
+    const WIKI_DAMPEN = 0.92;
+    for (let i = 0; i < wikiScored.length; i++) wikiScored[i] *= WIKI_DAMPEN;
   }
 
   render(topK(scored, count, wikiScored), query);
@@ -880,7 +942,8 @@ function stemWord(word) {
   if (w.length < 7) return null;
   // Strip common suffixes (longest first to avoid partial matches)
   const suffixes = [
-    "ically", "ation", "ition", "phobic", "phobia", "mania",
+    "ically", "ation", "ition", "phobic", "phobia", "philic", "philia", "mania",
+    "phile",
     "ness", "ment", "ible", "able",
     "ical", "ious", "eous",
     "ist", "ism", "ous", "ive", "ful", "ing", "ant", "ent", "ial",

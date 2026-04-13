@@ -1,19 +1,19 @@
 {
-  "build_date": "2026-04-13T17:35:25",
-  "total_entries": 175967,
+  "build_date": "2026-04-14T01:15:37",
+  "total_entries": 175965,
   "sources": {
     "oewn": {
       "name": "Open English WordNet 2025+",
       "license": "CC-BY-4.0",
       "url": "https://github.com/globalwordnet/english-wordnet/releases/download/2025-edition/english-wordnet-2025-plus-json.zip",
-      "entries": 110603,
+      "entries": 110604,
       "redistributed": true
     },
     "webster": {
       "name": "Webster's Unabridged Dictionary (1913)",
       "license": "Public Domain",
       "url": "https://raw.githubusercontent.com/adambom/dictionary/master/dictionary.json",
-      "entries": 65364,
+      "entries": 65361,
       "redistributed": true
     },
     "moby": {

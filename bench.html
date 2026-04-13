@@ -151,7 +151,6 @@ for (let i = 0; i < 256; i++) {
 let wordCount = 0;
 let fullEmbInt8, fullRangeMin, fullRangeScale;
 let fullEmbBinary;
-let fullEmbF16;
 let potionEmbInt8, potionRangeMin, potionRangeScale;
 let potionModel;
 let itqMean, itqR, itqReady = false;
@@ -273,14 +272,6 @@ function scoreBinaryRerank(qvec, count, out) {
   }
 }
 
-function scoreFloat16(qvec, f16Data, dims, count, out) {
-  for (let i = 0; i < count; i++) {
-    let dot = 0; const base = i * dims;
-    for (let d = 0; d < dims; d++) dot += qvec[d] * f16LUT[f16Data[base + d]];
-    out[i] = dot;
-  }
-}
-
 // --- Data loading ---
 async function loadData() {
   try {
@@ -290,11 +281,10 @@ async function loadData() {
     const meta = await fetch(`${DATA_ROOT}/meta.json`).then(r => r.json());
     wordCount = meta.count;
 
-    const [int8Buf, rangesBuf, binaryBuf, f16Buf, itqBuf, pInt8Buf, pRangesBuf, vocabText, matrixBuf] = await Promise.all([
+    const [int8Buf, rangesBuf, binaryBuf, itqBuf, pInt8Buf, pRangesBuf, vocabText, matrixBuf] = await Promise.all([
       fetch(`${DATA_ROOT}/embeddings_int8.bin`).then(r => r.arrayBuffer()),
       fetch(`${DATA_ROOT}/embeddings_ranges.bin`).then(r => r.arrayBuffer()),
       fetch(`${DATA_ROOT}/embeddings_binary.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
-      fetch(`${DATA_ROOT}/embeddings.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
       fetch(`${DATA_ROOT}/embeddings_itq.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
       fetch(`${DATA_ROOT}/embeddings_potion_int8.bin`).then(r => r.arrayBuffer()),
       fetch(`${DATA_ROOT}/embeddings_potion_ranges.bin`).then(r => r.arrayBuffer()),
@@ -308,7 +298,6 @@ async function loadData() {
     fullRangeScale = rd.subarray(FULL_DIMS, FULL_DIMS * 2);
 
     if (binaryBuf) fullEmbBinary = new Uint8Array(binaryBuf);
-    if (f16Buf) fullEmbF16 = new Uint16Array(f16Buf);
     if (itqBuf) {
       const itqFloat = new Float32Array(itqBuf);
       itqMean = itqFloat.subarray(0, FULL_DIMS);
@@ -400,13 +389,6 @@ window.runScoringBench = async function() {
     await new Promise(r => setTimeout(r, 10));
   }
 
-  // Full float16 (384d)
-  if (fullEmbF16) {
-    log("  Benchmarking: Full float16 (384d)...");
-    results.push(benchScoreMethod("Full float16 (384d)", (q, out) => scoreFloat16(q, fullEmbF16, FULL_DIMS, wordCount, out), FULL_DIMS));
-    await new Promise(r => setTimeout(r, 10));
-  }
-
   // Potion int8 (256d)
   log("  Benchmarking: Potion int8 (256d)...");
   results.push(benchScoreMethod("Potion int8 (256d)", (q, out) => scoreInt8(q, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, wordCount, out), LITE_DIMS));
@@ -417,7 +399,6 @@ window.runScoringBench = async function() {
     "Full int8 (384d)": `${(fullEmbInt8.byteLength / 1e6).toFixed(0)} MB`,
     "Full binary (384d)": fullEmbBinary ? `${(fullEmbBinary.byteLength / 1e6).toFixed(0)} MB` : "N/A",
     "Binary+int8 rerank": fullEmbBinary && fullEmbInt8 ? `${((fullEmbBinary.byteLength + fullEmbInt8.byteLength) / 1e6).toFixed(0)} MB` : "N/A",
-    "Full float16 (384d)": fullEmbF16 ? `${(fullEmbF16.byteLength / 1e6).toFixed(0)} MB` : "N/A",
     "Potion int8 (256d)": `${(potionEmbInt8.byteLength / 1e6).toFixed(0)} MB`,
   };
 
