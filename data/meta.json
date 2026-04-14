@@ -1,8 +1,7 @@
 {
-  "count": 175965,
-  "wiki_count": 137794,
+  "count": 353457,
   "dtype": "float16",
-  "source": "oewn-2025-plus+webster1913+moby+wiktionary-qw",
+  "source": "oewn-2025-plus+webster1913+gcide+century+moby+wiktionary-qw",
   "full_dims": 384,
   "full_model": "mixedbread-ai/mxbai-embed-large-v1"
 }

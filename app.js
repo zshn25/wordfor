@@ -17,6 +17,7 @@
 // ---------------------------------------------------------------------------
 
 const DATA_ROOT      = "data";
+const DATA_VERSION   = "v2";  // Bump when data files change to bust browser/CDN cache
 const TOP_K          = 30;
 const SHOW_K         = 9;
 const DEBOUNCE       = 400;
@@ -255,16 +256,6 @@ let itqR;               // Float32Array(384*384): ITQ rotation matrix (flattened
 let itqReady = false;   // true when ITQ calibration is loaded
 const RERANK_K = 500;   // number of binary candidates to rerank with int8
 
-// Wiktionary supplement (CC-BY-SA, loaded lazily)
-let wikiEntries;         // Array: words_wiki.json entries
-let wikiEmbInt8;         // Uint8Array : int8 wiki embeddings (full-mode)
-let wikiRangeMin;        // Float32Array(384): per-dim min
-let wikiRangeScale;      // Float32Array(384): per-dim range
-let wikiEmbBinary;       // Uint8Array : binary wiki embeddings
-let wikiPotionInt8;      // Uint8Array : potion wiki embeddings
-let wikiPotionRangeMin;  // Float32Array(256)
-let wikiPotionRangeScale;// Float32Array(256)
-let wikiReady = false;
 
 // ---------------------------------------------------------------------------
 // Transformers.js loader
@@ -275,7 +266,7 @@ async function loadTransformers() {
     "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4"
   );
   env.allowLocalModels  = true;
-  env.allowRemoteModels = false;
+  env.allowRemoteModels = true;  // Fallback to HuggingFace Hub if local files fail
 
   // Use ?device=webgpu to opt-in; default is always WASM (reliable everywhere)
   const params = new URLSearchParams(location.search);
@@ -291,6 +282,11 @@ async function loadTransformers() {
 // ---------------------------------------------------------------------------
 // Data loading
 // ---------------------------------------------------------------------------
+
+/** Append cache-busting version query param to data URLs. */
+function dataUrl(path) {
+  return `${DATA_ROOT}/${path}?v=${DATA_VERSION}`;
+}
 
 async function fetchWithProgress(url, progressId) {
   const res = await fetch(url);
@@ -314,7 +310,7 @@ async function fetchWithProgress(url, progressId) {
 
 async function loadWordList() {
   addProgressRow("words", "Word list (~18 MB)");
-  const res = await fetch(`${DATA_ROOT}/words.json`);
+  const res = await fetch(dataUrl("words.json"));
   setProgress("words", 50);
   wordEntries = await res.json();
   setProgress("words", 100);
@@ -326,10 +322,10 @@ async function loadPotionData() {
   $loaderNote.textContent = $loaderNote.textContent || "First visit downloads ~76 MB (cached for future visits)";
 
   // Shared data needed regardless of WASM or JS model
-  const embPromise = fetchWithProgress(`${DATA_ROOT}/embeddings_potion_int8.bin`, "emb")
+  const embPromise = fetchWithProgress(dataUrl("embeddings_potion_int8.bin"), "emb")
     .then(buf => { potionEmbInt8 = new Uint8Array(buf); });
 
-  const rangesPromise = fetch(`${DATA_ROOT}/embeddings_potion_ranges.bin`)
+  const rangesPromise = fetch(dataUrl("embeddings_potion_ranges.bin"))
     .then(r => r.arrayBuffer()).then(buf => {
       const data = new Float32Array(buf);
       potionRangeMin   = data.subarray(0, LITE_DIMS);
@@ -346,13 +342,13 @@ async function loadPotionData() {
 
   if (!wasmOk) {
     // Fallback: load pure JS PotionModel (vocab + f16 matrix)
-    const vocabPromise = fetch(`${DATA_ROOT}/vocab.txt`).then(async r => {
+    const vocabPromise = fetch(dataUrl("vocab.txt")).then(async r => {
       const lines = (await r.text()).split(/\r?\n/);
       const map = new Map();
       for (let i = 0; i < lines.length; i++) if (lines[i] !== "") map.set(lines[i], i);
       return map;
     });
-    const matrixPromise = fetchWithProgress(`${DATA_ROOT}/potion_matrix.bin`, "matrix")
+    const matrixPromise = fetchWithProgress(dataUrl("potion_matrix.bin"), "matrix")
       .then(buf => new Uint16Array(buf));
     const [vocabMap, matrixRaw] = await Promise.all([vocabPromise, matrixPromise]);
     potionModel = new PotionModel(vocabMap, matrixRaw, LITE_DIMS);
@@ -377,12 +373,12 @@ async function loadFullModel() {
   const tfPromise = loadTransformers();
 
   // Binary embeddings (~8 MB): primary scoring (fast Hamming)
-  const binaryPromise = fetchWithProgress(`${DATA_ROOT}/embeddings_binary.bin`, "femb")
+  const binaryPromise = fetchWithProgress(dataUrl("embeddings_binary.bin"), "femb")
     .then(buf => new Uint8Array(buf))
     .catch(() => null);
 
   // ITQ calibration (~577 KB): rotation matrix for binary scoring
-  const itqPromise = fetch(`${DATA_ROOT}/embeddings_itq.bin`)
+  const itqPromise = fetch(dataUrl("embeddings_itq.bin"))
     .then(r => r.ok ? r.arrayBuffer() : null)
     .catch(() => null);
 
@@ -453,11 +449,11 @@ async function loadFullRerank() {
   try {
     // Try int4 first (half the size of int8)
     const [int4Buf, rangesBuf] = await Promise.all([
-      fetch(`${DATA_ROOT}/embeddings_int4.bin`).then(r => {
+      fetch(dataUrl("embeddings_int4.bin")).then(r => {
         if (!r.ok) throw new Error("int4 not found");
         return r.arrayBuffer();
       }),
-      fetch(`${DATA_ROOT}/embeddings_ranges.bin`).then(r => r.arrayBuffer()),
+      fetch(dataUrl("embeddings_ranges.bin")).then(r => r.arrayBuffer()),
     ]);
     fullEmbInt4    = new Uint8Array(int4Buf);
     const rd       = new Float32Array(rangesBuf);
@@ -470,8 +466,8 @@ async function loadFullRerank() {
   }
   try {
     const [int8Buf, rangesBuf] = await Promise.all([
-      fetch(`${DATA_ROOT}/embeddings_int8.bin`).then(r => r.arrayBuffer()),
-      fetch(`${DATA_ROOT}/embeddings_ranges.bin`).then(r => r.arrayBuffer()),
+      fetch(dataUrl("embeddings_int8.bin")).then(r => r.arrayBuffer()),
+      fetch(dataUrl("embeddings_ranges.bin")).then(r => r.arrayBuffer()),
     ]);
     fullEmbInt8    = new Uint8Array(int8Buf);
     const rd       = new Float32Array(rangesBuf);
@@ -483,78 +479,6 @@ async function loadFullRerank() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Wiktionary supplement loader (lazy, after main app is ready)
-// ---------------------------------------------------------------------------
-
-async function loadWikiData() {
-  try {
-    // Load word entries
-    const wordsRes = await fetch(`${DATA_ROOT}/words_wiki.json`);
-    if (!wordsRes.ok) return;
-    wikiEntries = await wordsRes.json();
-    if (!wikiEntries || wikiEntries.length === 0) return;
-
-    const wikiCount = wikiEntries.length;
-
-    // Load embeddings in parallel based on mode
-    const promises = [];
-
-    if (MODE === "full" || fullReady) {
-      // Full-mode wiki: binary for first pass, int8 for reranking (skip int8 on BINARY_ONLY)
-      promises.push(
-        fetch(`${DATA_ROOT}/embeddings_wiki_binary.bin`)
-          .then(r => r.ok ? r.arrayBuffer() : null)
-          .then(buf => { if (buf) wikiEmbBinary = new Uint8Array(buf); })
-          .catch(() => {})
-      );
-      if (!BINARY_ONLY) {
-        promises.push(
-          fetch(`${DATA_ROOT}/embeddings_wiki_int8.bin`)
-            .then(r => r.ok ? r.arrayBuffer() : null)
-            .then(buf => { if (buf) wikiEmbInt8 = new Uint8Array(buf); })
-            .catch(() => {}),
-          fetch(`${DATA_ROOT}/embeddings_wiki_ranges.bin`)
-            .then(r => r.ok ? r.arrayBuffer() : null)
-            .then(buf => {
-              if (buf) {
-                const data = new Float32Array(buf);
-                wikiRangeMin   = data.subarray(0, FULL_DIMS);
-                wikiRangeScale = data.subarray(FULL_DIMS, FULL_DIMS * 2);
-              }
-            })
-            .catch(() => {})
-        );
-      }
-    }
-
-    // Potion wiki embeddings (only for lite mode)
-    if (MODE === "lite") {
-      promises.push(
-        fetch(`${DATA_ROOT}/embeddings_wiki_potion_int8.bin`)
-          .then(r => r.ok ? r.arrayBuffer() : null)
-          .then(buf => { if (buf) wikiPotionInt8 = new Uint8Array(buf); })
-          .catch(() => {}),
-        fetch(`${DATA_ROOT}/embeddings_wiki_potion_ranges.bin`)
-          .then(r => r.ok ? r.arrayBuffer() : null)
-          .then(buf => {
-            if (buf) {
-              const data = new Float32Array(buf);
-              wikiPotionRangeMin   = data.subarray(0, LITE_DIMS);
-              wikiPotionRangeScale = data.subarray(LITE_DIMS, LITE_DIMS * 2);
-            }
-          })
-          .catch(() => {})
-      );
-    }
-
-    await Promise.all(promises);
-    wikiReady = true;
-    console.log(`Wiki supplement loaded: ${wikiCount} entries`);
-  } catch (e) {
-    console.warn("Wiki supplement failed to load:", e.message);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Init
@@ -569,7 +493,7 @@ async function init() {
   if (MODE === "full") {
     $loaderNote.textContent = BINARY_ONLY
       ? "First visit downloads ~30 MB (cached for future visits)"
-      : "First visit downloads ~55 MB (cached for future visits)";
+      : "First visit downloads ~48 MB (cached for future visits)";
     const wordsPromise = loadWordList();
     const fullPromise = loadFullModel().catch(err => {
       console.warn("Full model load failed, falling back to lite:", err.message);
@@ -599,8 +523,6 @@ async function init() {
   const q = new URLSearchParams(location.search).get("q");
   if (q) { $input.value = q; search(q); }
 
-  // Lazy-load Wiktionary supplement (non-blocking, enhances results silently)
-  loadWikiData().catch(e => console.warn("Wiki load:", e.message));
 
   // Lazy-load reranking embeddings (non-blocking, upgrades from binary-only)
   loadFullRerank().catch(e => console.warn("Rerank load:", e.message));
@@ -828,34 +750,6 @@ function nthElement(arr, scores, lo, hi, k) {
   }
 }
 
-/**
- * Two-stage scoring for wiki entries: binary Hamming + int8 reranking.
- */
-function scoreBinaryRerankWiki(qvec, count, out) {
-  const hamming = new Float32Array(count);
-  scoreHamming(qvec, wikiEmbBinary, FULL_BINARY_BYTES, count, hamming);
-
-  const topIdx = new Int32Array(count);
-  for (let i = 0; i < count; i++) topIdx[i] = i;
-  const k = Math.min(RERANK_K, count);
-  nthElement(topIdx, hamming, 0, count - 1, k);
-
-  const qScaled = new Float32Array(FULL_DIMS);
-  let qOffset = 0;
-  for (let d = 0; d < FULL_DIMS; d++) {
-    qScaled[d] = qvec[d] * wikiRangeScale[d] / 255;
-    qOffset += qvec[d] * wikiRangeMin[d];
-  }
-
-  for (let i = 0; i < count; i++) out[i] = -Infinity;
-  for (let j = 0; j < k; j++) {
-    const idx = topIdx[j];
-    let dot = qOffset;
-    const base = idx * FULL_DIMS;
-    for (let d = 0; d < FULL_DIMS; d++) dot += qScaled[d] * wikiEmbInt8[base + d];
-    out[idx] = dot;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Search
@@ -892,36 +786,7 @@ async function search(query) {
   }
   applyQualityWeights(scored, count);
 
-  // Score wiki entries if loaded — use SAME scoring method as main dictionary
-  let wikiScored = null;
-  if (wikiReady && wikiEntries && wikiEntries.length > 0) {
-    const wc = wikiEntries.length;
-    wikiScored = new Float32Array(wc);
-    if (fullReady) {
-      if (fullBinaryReady && rerankReady && wikiEmbBinary && wikiEmbInt8 && wikiRangeMin) {
-        // Both main and wiki use binary+rerank (scores on same scale)
-        scoreBinaryRerankWiki(qvec, wc, wikiScored);
-      } else if (wikiEmbBinary && fullBinaryReady) {
-        // Both use pure binary Hamming (scores on same [-1,1] scale)
-        scoreHamming(qvec, wikiEmbBinary, FULL_BINARY_BYTES, wc, wikiScored);
-      } else if (fullEmbInt8 && wikiEmbInt8 && wikiRangeMin) {
-        // Both use pure int8
-        scoreInt8(qvec, wikiEmbInt8, wikiRangeMin, wikiRangeScale, FULL_DIMS, wc, wikiScored);
-      }
-    } else if (wikiPotionInt8 && wikiPotionRangeMin && potionModel) {
-      const potionVec = potionModel.encode(query);
-      scoreInt8(potionVec, wikiPotionInt8, wikiPotionRangeMin, wikiPotionRangeScale, LITE_DIMS, wc, wikiScored);
-    }
-  }
-
-  // Dampen wiki scores: supplement entries should not outrank main dictionary
-  // unless they are significantly more relevant
-  if (wikiScored) {
-    const WIKI_DAMPEN = 0.92;
-    for (let i = 0; i < wikiScored.length; i++) wikiScored[i] *= WIKI_DAMPEN;
-  }
-
-  render(topK(scored, count, wikiScored), query);
+  render(topK(scored, count), query);
 }
 
 /** Multiply scores by per-entry quality weights (if available). */
@@ -957,28 +822,18 @@ function stemWord(word) {
   return null;
 }
 
-function topK(scored, count, wikiScored) {
+function topK(scored, count) {
   // Get top candidates from main pool
-  const CANDIDATE_LIMIT = TOP_K * 4; // enough candidates for merging
+  const CANDIDATE_LIMIT = TOP_K * 4; // enough candidates for dedup
   const mainIndices = Array.from({ length: count }, (_, i) => i);
   mainIndices.sort((a, b) => scored[b] - scored[a]);
 
-  // Build combined candidate list from main + wiki top candidates
+  // Build candidate list from top-scoring entries
   const combined = [];
   const mainLimit = Math.min(mainIndices.length, CANDIDATE_LIMIT);
   for (let i = 0; i < mainLimit; i++) {
     const idx = mainIndices[i];
     combined.push({ entry: wordEntries[idx], score: scored[idx] });
-  }
-
-  if (wikiScored && wikiEntries && wikiEntries.length > 0) {
-    const wikiIndices = Array.from({ length: wikiEntries.length }, (_, i) => i);
-    wikiIndices.sort((a, b) => wikiScored[b] - wikiScored[a]);
-    const wikiLimit = Math.min(wikiIndices.length, CANDIDATE_LIMIT);
-    for (let i = 0; i < wikiLimit; i++) {
-      const idx = wikiIndices[i];
-      combined.push({ entry: wikiEntries[idx], score: wikiScored[idx] });
-    }
   }
 
   combined.sort((a, b) => b.score - a.score);

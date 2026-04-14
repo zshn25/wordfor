@@ -16,4 +16,4 @@ Thumbs.db
 *.log
 build/*.zip
 build/*
-data\embeddings.bin
+data/embeddings.bin

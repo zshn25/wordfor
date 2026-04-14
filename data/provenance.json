@@ -1,19 +1,34 @@
 {
-  "build_date": "2026-04-14T01:15:37",
-  "total_entries": 175965,
+  "build_date": "2026-04-14T16:43:40",
+  "total_entries": 353457,
   "sources": {
     "oewn": {
       "name": "Open English WordNet 2025+",
       "license": "CC-BY-4.0",
       "url": "https://github.com/globalwordnet/english-wordnet/releases/download/2025-edition/english-wordnet-2025-plus-json.zip",
-      "entries": 110604,
+      "entries": 110361,
       "redistributed": true
     },
     "webster": {
       "name": "Webster's Unabridged Dictionary (1913)",
       "license": "Public Domain",
       "url": "https://raw.githubusercontent.com/adambom/dictionary/master/dictionary.json",
-      "entries": 65361,
+      "entries": 62951,
+      "redistributed": true
+    },
+    "gcide": {
+      "name": "GCIDE (Webster 1913 public domain portion)",
+      "license": "Public Domain (Webster 1913 content only)",
+      "url": "https://gcide.gnu.org.ua/",
+      "entries": 43455,
+      "note": "Only entries sourced from '1913 Webster' are used",
+      "redistributed": true
+    },
+    "century": {
+      "name": "Century Dictionary (1889-1911)",
+      "license": "Public Domain",
+      "url": "https://github.com/hupong/century-dictionary",
+      "entries": 136690,
       "redistributed": true
     },
     "moby": {
@@ -27,9 +42,8 @@
       "name": "Wiktionary via kaikki.org",
       "license": "CC-BY-SA-3.0",
       "url": "https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl.gz",
-      "note": "Build-time cross-validation for words.json. Supplement entries redistributed separately in words_wiki.json under CC-BY-SA-3.0.",
-      "redistributed_in_words_json": false,
-      "redistributed_in_words_wiki_json": true
+      "note": "Build-time cross-validation for quality scores only. Not redistributed.",
+      "redistributed_in_words_json": false
     },
     "conceptnet": {
       "name": "ConceptNet 5.7",
