@@ -17,3 +17,4 @@ Thumbs.db
 build/*.zip
 build/*
 data/embeddings.bin
+data/embeddings_int8.bin

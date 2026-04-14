@@ -97,7 +97,7 @@
           <div class="how-step-num">2</div>
           <div>
             <h3>Match</h3>
-            <p>A sentence-embedding AI model converts your description into a meaning vector and compares it against 175,000+ dictionary definitions using 1-bit binary scoring. On desktop, a two-stage pipeline narrows candidates via fast Hamming distance, then reranks the top 500 with int8 precision. On mobile, pure binary scoring keeps downloads small (~30 MB).</p>
+            <p>A sentence-embedding AI model converts your description into a meaning vector and compares it against 175,000+ dictionary definitions using 1-bit binary scoring. On desktop, a two-stage pipeline narrows candidates via fast Hamming distance, then reranks the top 500 with int4 precision (with int8 fallback support). On mobile, pure binary scoring keeps downloads small (~30 MB).</p>
           </div>
         </div>
         <div class="how-step">
@@ -114,7 +114,7 @@
     <section class="about-section">
       <h2 class="about-section-title">Under the hood</h2>
       <p class="about-text">
-        WordFor uses a sentence-embedding AI model (<a href="https://huggingface.co/MongoDB/mdbr-leaf-mt" target="_blank" rel="noopener">mdbr-leaf-mt</a>) running via <a href="https://huggingface.co/docs/transformers.js" target="_blank" rel="noopener">Transformers.js</a> to convert your description into a meaning vector, then compares it against 175,000+ pre-embedded dictionary definitions using a two-stage binary + int8 scoring pipeline. A lighter <a href="https://huggingface.co/minishlab/potion-base-8M" target="_blank" rel="noopener">potion-base-8M</a> mode is available as fallback.
+        WordFor uses a sentence-embedding AI model (<a href="https://huggingface.co/MongoDB/mdbr-leaf-mt" target="_blank" rel="noopener">mdbr-leaf-mt</a>) running via <a href="https://huggingface.co/docs/transformers.js" target="_blank" rel="noopener">Transformers.js</a> to convert your description into a meaning vector, then compares it against 175,000+ pre-embedded dictionary definitions using a two-stage binary + int4 scoring pipeline (with int8 fallback support). A lighter <a href="https://huggingface.co/minishlab/potion-base-8M" target="_blank" rel="noopener">potion-base-8M</a> mode is available as fallback.
       </p>
       <p class="about-text" style="margin-top:12px">
         For a deep dive into the architecture, scoring pipeline, and evaluation results, see the <a href="https://zshn25.github.io/wordfor-reverse-dictionary/" target="_blank" rel="noopener">blog post</a>.
