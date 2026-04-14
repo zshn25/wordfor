@@ -24,15 +24,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Checkout build repo (optional)
-        if: ${{ vars.WORDFOR_BUILD_REPOSITORY != '' }}
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ vars.WORDFOR_BUILD_REPOSITORY }}
-          path: build
-
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -43,10 +34,10 @@ jobs:
       - name: Minify JS, CSS, HTML
         shell: bash
         run: |
-          if [ -f "build/minify.py" ]; then
-            python build/minify.py
+          if [ -f "minify.py" ]; then
+            python minify.py
           else
-            echo "build/minify.py not found (build is a separate repo). Skipping minification."
+            echo "minify.py not found (build is a separate repo). Skipping minification."
           fi
 
       - name: Upload Pages artifact
