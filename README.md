@@ -26,7 +26,7 @@ WordFor is a reverse dictionary where you describe a concept and instantly get t
 
 ### Dictionary
 
-175,000+ definitions from [Open English WordNet](https://en-word.net/) (CC BY 4.0), Webster's 1913 (public domain), and Moby Thesaurus (public domain). 168K supplementary entries from [Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/) (CC BY-SA 3.0).
+175,000+ definitions from [Open English WordNet](https://en-word.net/) (CC BY 4.0), Webster's 1913 (public domain), and Moby Thesaurus (public domain). 168K supplementary entries from [Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/) (CC BY-SA 3.0) are used at build time for quality signals only; not redistributed.
 
 ### Privacy
 

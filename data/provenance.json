@@ -1,26 +1,26 @@
 {
-  "build_date": "2026-04-14T16:43:40",
-  "total_entries": 353457,
+  "build_date": "2026-04-15T13:25:02",
+  "total_entries": 350238,
   "sources": {
     "oewn": {
       "name": "Open English WordNet 2025+",
       "license": "CC-BY-4.0",
       "url": "https://github.com/globalwordnet/english-wordnet/releases/download/2025-edition/english-wordnet-2025-plus-json.zip",
-      "entries": 110361,
+      "entries": 110360,
       "redistributed": true
     },
     "webster": {
       "name": "Webster's Unabridged Dictionary (1913)",
       "license": "Public Domain",
       "url": "https://raw.githubusercontent.com/adambom/dictionary/master/dictionary.json",
-      "entries": 62951,
+      "entries": 62955,
       "redistributed": true
     },
     "gcide": {
       "name": "GCIDE (Webster 1913 public domain portion)",
       "license": "Public Domain (Webster 1913 content only)",
       "url": "https://gcide.gnu.org.ua/",
-      "entries": 43455,
+      "entries": 40870,
       "note": "Only entries sourced from '1913 Webster' are used",
       "redistributed": true
     },
@@ -28,7 +28,7 @@
       "name": "Century Dictionary (1889-1911)",
       "license": "Public Domain",
       "url": "https://github.com/hupong/century-dictionary",
-      "entries": 136690,
+      "entries": 136053,
       "redistributed": true
     },
     "moby": {

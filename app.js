@@ -237,7 +237,7 @@ let potionModel;
 let wordEntries;
 
 // Potion int8 embeddings (lite mode scoring)
-let potionEmbInt8;      // Uint8Array : int8 quantized potion embeddings
+let potionEmbInt4;      // Uint8Array : int4 packed potion embeddings (2 dims/byte)
 let potionRangeMin;     // Float32Array(256): per-dim min
 let potionRangeScale;   // Float32Array(256): per-dim range
 
@@ -318,12 +318,12 @@ async function loadWordList() {
 
 async function loadPotionData() {
   addProgressRow("matrix", "Embedding model (~15 MB)");
-  addProgressRow("emb",    "Dictionary vectors (~43 MB)");
-  $loaderNote.textContent = $loaderNote.textContent || "First visit downloads ~76 MB (cached for future visits)";
+  addProgressRow("emb",    "Dictionary vectors (~22 MB)");
+  $loaderNote.textContent = $loaderNote.textContent || "First visit downloads ~55 MB (cached for future visits)";
 
   // Shared data needed regardless of WASM or JS model
-  const embPromise = fetchWithProgress(dataUrl("embeddings_potion_int8.bin"), "emb")
-    .then(buf => { potionEmbInt8 = new Uint8Array(buf); });
+  const embPromise = fetchWithProgress(dataUrl("embeddings_potion_int4.bin"), "emb")
+    .then(buf => { potionEmbInt4 = new Uint8Array(buf); });
 
   const rangesPromise = fetch(dataUrl("embeddings_potion_ranges.bin"))
     .then(r => r.arrayBuffer()).then(buf => {
@@ -392,9 +392,9 @@ async function loadFullModel() {
   tokenizer = await AutoTokenizer.from_pretrained(FULL_MODEL_ID);
   const modelProgress = (p) => {
     // p.progress goes 0-100 for each file download; map to 20%-80% range
-    if (p.status === "progress" && p.progress != null) {
-      setProgress("tf", 20 + p.progress * 0.6);
-    }
+    // if (p.status === "progress" && p.progress != null) {
+    //   setProgress("tf", 20 + p.progress * 0.6);
+    // }
   };
   try {
     model = await timeout(BINARY_ONLY ? 30_000 : 90_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
@@ -622,6 +622,30 @@ function scoreInt8(qvec, embData, rangeMin, rangeScale, dims, count, out) {
 }
 
 // ---------------------------------------------------------------------------
+// Int4 dot product scoring (lite mode)
+// ---------------------------------------------------------------------------
+
+function scoreInt4(qvec, int4Data, rangeMin, rangeScale, dims, count, out) {
+  const qScaled = new Float32Array(dims);
+  let qOffset = 0;
+  for (let d = 0; d < dims; d++) {
+    qScaled[d] = qvec[d] * rangeScale[d] / 15;
+    qOffset += qvec[d] * rangeMin[d];
+  }
+  const halfDims = dims >> 1;
+  for (let i = 0; i < count; i++) {
+    let dot = qOffset;
+    const base = i * halfDims;
+    for (let d = 0; d < dims; d += 2) {
+      const packed = int4Data[base + (d >> 1)];
+      dot += qScaled[d]     * (packed >> 4);
+      dot += qScaled[d + 1] * (packed & 0x0F);
+    }
+    out[i] = dot;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Binary (1-bit) Hamming distance scoring
 // ---------------------------------------------------------------------------
 
@@ -782,7 +806,7 @@ async function search(query) {
       scoreInt8(qvec, fullEmbInt8, fullRangeMin, fullRangeScale, FULL_DIMS, count, scored);
     }
   } else {
-    scoreInt8(qvec, potionEmbInt8, potionRangeMin, potionRangeScale, LITE_DIMS, count, scored);
+    scoreInt4(qvec, potionEmbInt4, potionRangeMin, potionRangeScale, LITE_DIMS, count, scored);
   }
   applyQualityWeights(scored, count);
 
@@ -807,8 +831,7 @@ function stemWord(word) {
   if (w.length < 7) return null;
   // Strip common suffixes (longest first to avoid partial matches)
   const suffixes = [
-    "ically", "ation", "ition", "phobic", "phobia", "philic", "philia", "mania",
-    "phile",
+    "ically", "ation", "ition",
     "ness", "ment", "ible", "able",
     "ical", "ious", "eous",
     "ist", "ism", "ous", "ive", "ful", "ing", "ant", "ent", "ial",
@@ -888,11 +911,14 @@ function topK(scored, count) {
           const s = stemWord(w);
           if (s) stemToGroup.set(s, groupKey);
         }
+        if (entry.s) for (const syn of entry.s) {
+          if (!g.s.includes(syn)) g.s.push(syn);
+        }
       }
     } else {
       if (order.length >= TOP_K) continue;
       const primary = entry.w[0].toLowerCase();
-      const g = { w: [...entry.w], defs: [{ d: entry.d, p: entry.p, score: itemScore }], score: itemScore };
+      const g = { w: [...entry.w], s: entry.s ? [...entry.s] : [], defs: [{ d: entry.d, p: entry.p, score: itemScore }], score: itemScore };
       groups.set(primary, g);
       order.push(primary);
       for (const w of entry.w) {
@@ -925,31 +951,31 @@ function render(items, query) {
   const MAX_ALT = 8;
   const renderCard = (it, i) => {
     const primary = it.w[0];
-    // Filter out synonyms that duplicate other result headwords
+    // Morphological variants (w[] minus primary) - always show on separate line
     const altWords = it.w.slice(1).filter(w => !shownWords.has(w.toLowerCase()));
-    if (altWords.length === 0) {
-      var altHtml = "";
-    } else {
-      const visiblePart = altWords.slice(0, MAX_ALT).join(", ");
-      const hiddenPart = altWords.slice(MAX_ALT).join(", ");
-      altHtml = `<span class="card-words-alt">`
-        + `<span class="alt-visible">${esc(visiblePart)}</span>`
-        + (hiddenPart ? `<span class="alt-hidden">, ${esc(hiddenPart)}</span>` : "")
-        + `</span>`;
-    }
+    const altHtml = altWords.length > 0
+      ? `<div class="card-variants">${esc(altWords.slice(0, MAX_ALT).join(", "))}${altWords.length > MAX_ALT ? `, +${altWords.length - MAX_ALT}` : ""}</div>`
+      : "";
     const pct = Math.round((it.score / maxScore) * 100);
     const defsHtml = it.defs.map((def, di) => {
       const posTag = def.p ? `<span class="card-pos" data-pos="${esc(def.p)}">${esc(def.p)}</span> ` : "";
       return `<p class="card-def">${di > 0 ? `<span class="def-num">${di + 1}.</span> ` : ""}${posTag}${esc(def.d)}</p>`;
     }).join("");
+    // Synonyms from Moby Thesaurus
+    const syns = (it.s || []).filter(w => !shownWords.has(w.toLowerCase()));
+    const SHOW_SYNS = 5;
+    const synHtml = syns.length > 0
+      ? `<div class="card-synonyms"><span class="syn-label">Synonyms: </span><span class="syn-visible">${esc(syns.slice(0, SHOW_SYNS).join(", "))}</span>${syns.length > SHOW_SYNS ? `<span class="syn-hidden">, ${esc(syns.slice(SHOW_SYNS).join(", "))}</span><span class="syn-toggle">+${syns.length - SHOW_SYNS}</span>` : ""}</div>`
+      : "";
     return `
       <article class="result-card" style="animation-delay:${i * 30}ms">
         <div class="card-head">
           <span class="card-word">${esc(primary)}</span>
           ${it.defs.length === 1 ? `<span class="card-pos" data-pos="${esc(it.defs[0].p)}">${esc(it.defs[0].p)}</span>` : ""}
-          ${altHtml}
         </div>
-        ${it.defs.length === 1 ? `<p class="card-def">${esc(it.defs[0].d)}</p>` : defsHtml}
+        ${altHtml}
+        <div class="card-defs-wrap">${it.defs.length === 1 ? `<p class="card-def">${esc(it.defs[0].d)}</p>` : defsHtml}</div>
+        ${synHtml}
         <div class="card-score">
           <div class="score-bar"><div class="score-fill" style="width:${pct}%"></div></div>
           <span class="score-pct">${pct}%</span>
@@ -965,11 +991,17 @@ function render(items, query) {
       ${hidden.map((it, i) => renderCard(it, SHOW_K + i)).join("")}
     </div>
     <button class="show-more-btn" id="showMoreBtn" onclick="
-      document.getElementById('moreResults').classList.toggle('collapsed');
+      const more = document.getElementById('moreResults');
+      more.classList.toggle('collapsed');
       this.textContent = this.textContent.includes('Show') ? 'Show fewer' : 'Show ${hidden.length} more matches';
+      if (!more.classList.contains('collapsed')) more.querySelectorAll('.card-defs-wrap:not(.truncated)').forEach(el => { if (el.scrollHeight > el.clientHeight + 2) el.classList.add('truncated'); });
     ">Show ${hidden.length} more matches</button>`;
   }
   $results.innerHTML = html;
+  // Mark overflowing def blocks as truncated (show fade + cursor)
+  $results.querySelectorAll(".card-defs-wrap").forEach(el => {
+    if (el.scrollHeight > el.clientHeight + 2) el.classList.add("truncated");
+  });
 }
 
 function esc(s) {
@@ -1002,10 +1034,15 @@ $results.addEventListener("copy", () => {
 });
 */
 
-// Click-to-expand synonyms
+// Click-to-expand definitions and synonyms
 $results.addEventListener("click", (e) => {
-  const alt = e.target.closest(".card-words-alt");
-  if (alt) alt.classList.toggle("expanded");
+  const defsWrap = e.target.closest(".card-defs-wrap");
+  if (defsWrap) defsWrap.classList.toggle("expanded");
+  const synToggle = e.target.closest(".syn-toggle");
+  if (synToggle) {
+    const synDiv = synToggle.closest(".card-synonyms");
+    if (synDiv) synDiv.classList.toggle("expanded");
+  }
 });
 
 function bufferFeedback(event) {
