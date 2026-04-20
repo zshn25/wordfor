@@ -1,3 +1,9 @@
 User-agent: *
 Allow: /
-Sitemap: https://wordfor.xyz/sitemap.xml
+Disallow: /*?q=
+
+Content-Signal: search=yes
+Content-Signal: ai-train=yes
+Content-Signal: ai-input=yes
+
+Sitemap: https://wordfor.xyz/sitemap.txt

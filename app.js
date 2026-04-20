@@ -16,17 +16,17 @@
 // Config
 // ---------------------------------------------------------------------------
 
-const DATA_ROOT      = "data";
-const DATA_VERSION   = "v2";  // Bump when data files change to bust browser/CDN cache
-const TOP_K          = 30;
-const SHOW_K         = 9;
-const DEBOUNCE       = 400;
+const DATA_ROOT = "data";
+const DATA_VERSION = "v2";  // Bump when data files change to bust browser/CDN cache
+const TOP_K = 30;
+const SHOW_K = 9;
+const DEBOUNCE = 400;
 const RATE_LIMIT_MAX = 15;
-const RATE_LIMIT_MS  = 10_000;
+const RATE_LIMIT_MS = 10_000;
 
-const FULL_MODEL_ID  = "onnx-community/mdbr-leaf-mt-ONNX";
-const FULL_DIMS      = 384;
-const LITE_DIMS      = 256;
+const FULL_MODEL_ID = "onnx-community/mdbr-leaf-mt-ONNX";
+const FULL_DIMS = 384;
+const LITE_DIMS = 256;
 
 let MODE = null;
 let DIMS = null;
@@ -40,7 +40,7 @@ const f16LUT = new Float32Array(65536);
 (function buildLUT() {
   for (let i = 0; i < 65536; i++) {
     const sign = (i >> 15) & 1;
-    const exp  = (i >> 10) & 0x1f;
+    const exp = (i >> 10) & 0x1f;
     const frac = i & 0x3ff;
     if (exp === 0) {
       f16LUT[i] = (sign ? -1 : 1) * 2 ** -14 * (frac / 1024);
@@ -56,14 +56,14 @@ const f16LUT = new Float32Array(65536);
 // DOM
 // ---------------------------------------------------------------------------
 
-const $loader        = document.getElementById("loader");
+const $loader = document.getElementById("loader");
 const $progressStack = document.getElementById("progress-stack");
-const $loaderNote    = document.getElementById("loader-note");
-const $app           = document.getElementById("app");
-const $input         = document.getElementById("search-input");
-const $btn           = document.getElementById("search-btn");
-const $results       = document.getElementById("results");
-const $status        = document.getElementById("results-status");
+const $loaderNote = document.getElementById("loader-note");
+const $app = document.getElementById("app");
+const $input = document.getElementById("search-input");
+const $btn = document.getElementById("search-btn");
+const $results = document.getElementById("results");
+const $status = document.getElementById("results-status");
 
 // ---------------------------------------------------------------------------
 // Progress helpers
@@ -156,10 +156,10 @@ class WasmPotionModel {
 
 class PotionModel {
   constructor(vocabMap, matrixRaw, dims) {
-    this.vocab  = vocabMap;
+    this.vocab = vocabMap;
     this.matrix = matrixRaw;
-    this.dims   = dims;
-    this.unkId  = vocabMap.get("[UNK]");
+    this.dims = dims;
+    this.unkId = vocabMap.get("[UNK]");
   }
 
   _preTokenize(text) {
@@ -181,7 +181,7 @@ class PotionModel {
   _isPunct(ch) {
     const cp = ch.codePointAt(0);
     return (cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) ||
-           (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126);
+      (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126);
   }
 
   _wordPiece(word) {
@@ -262,11 +262,24 @@ const RERANK_K = 500;   // number of binary candidates to rerank with int8
 // ---------------------------------------------------------------------------
 
 async function loadTransformers() {
-  const { AutoModel, AutoTokenizer, env } = await import(
-    "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4"
-  );
-  env.allowLocalModels  = true;
-  env.allowRemoteModels = true;  // Fallback to HuggingFace Hub if local files fail
+  // Try self-hosted vendor first so the full model works even with CDN blockers.
+  // To enable: download the library file (e.g. with your browser) and save to:
+  //   wordfor/vendor/transformers.min.js
+  // URL: https://cdn.jsdelivr.net/npm/@huggingface/transformers@4/dist/transformers.min.js
+  const SOURCES = [
+    "/vendor/transformers.min.js",
+    "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4",
+    "https://unpkg.com/@huggingface/transformers@4",
+  ];
+  let imported;
+  for (const src of SOURCES) {
+    try { imported = await import(src); break; } catch { /* try next */ }
+  }
+  if (!imported) throw new Error("AI library blocked by browser extension (all sources failed)");
+
+  const { AutoModel, AutoTokenizer, env } = imported;
+  env.allowLocalModels = true;
+  env.allowRemoteModels = false;  // Model files are self-hosted; suppress HuggingFace Hub fetches
 
   // Use ?device=webgpu to opt-in; default is always WASM (reliable everywhere)
   const params = new URLSearchParams(location.search);
@@ -318,7 +331,7 @@ async function loadWordList() {
 
 async function loadPotionData() {
   addProgressRow("matrix", "Embedding model (~15 MB)");
-  addProgressRow("emb",    "Dictionary vectors (~22 MB)");
+  addProgressRow("emb", "Dictionary vectors (~22 MB)");
   $loaderNote.textContent = $loaderNote.textContent || "First visit downloads ~55 MB (cached for future visits)";
 
   // Shared data needed regardless of WASM or JS model
@@ -328,7 +341,7 @@ async function loadPotionData() {
   const rangesPromise = fetch(dataUrl("embeddings_potion_ranges.bin"))
     .then(r => r.arrayBuffer()).then(buf => {
       const data = new Float32Array(buf);
-      potionRangeMin   = data.subarray(0, LITE_DIMS);
+      potionRangeMin = data.subarray(0, LITE_DIMS);
       potionRangeScale = data.subarray(LITE_DIMS, LITE_DIMS * 2);
     });
 
@@ -367,8 +380,8 @@ function timeout(ms, promise) {
 }
 
 async function loadFullModel() {
-  addProgressRow("tf",    "AI model (~22 MB)");
-  addProgressRow("femb",  "Dictionary vectors (~9 MB)");
+  addProgressRow("tf", "AI model (~22 MB)");
+  addProgressRow("femb", "Dictionary vectors (~9 MB)");
 
   const tfPromise = loadTransformers();
 
@@ -455,9 +468,9 @@ async function loadFullRerank() {
       }),
       fetch(dataUrl("embeddings_ranges.bin")).then(r => r.arrayBuffer()),
     ]);
-    fullEmbInt4    = new Uint8Array(int4Buf);
-    const rd       = new Float32Array(rangesBuf);
-    fullRangeMin   = rd.subarray(0, FULL_DIMS);
+    fullEmbInt4 = new Uint8Array(int4Buf);
+    const rd = new Float32Array(rangesBuf);
+    fullRangeMin = rd.subarray(0, FULL_DIMS);
     fullRangeScale = rd.subarray(FULL_DIMS, FULL_DIMS * 2);
     console.log("Loaded int4 reranking embeddings");
     return;
@@ -469,9 +482,9 @@ async function loadFullRerank() {
       fetch(dataUrl("embeddings_int8.bin")).then(r => r.arrayBuffer()),
       fetch(dataUrl("embeddings_ranges.bin")).then(r => r.arrayBuffer()),
     ]);
-    fullEmbInt8    = new Uint8Array(int8Buf);
-    const rd       = new Float32Array(rangesBuf);
-    fullRangeMin   = rd.subarray(0, FULL_DIMS);
+    fullEmbInt8 = new Uint8Array(int8Buf);
+    const rd = new Float32Array(rangesBuf);
+    fullRangeMin = rd.subarray(0, FULL_DIMS);
     fullRangeScale = rd.subarray(FULL_DIMS, FULL_DIMS * 2);
     console.log("Loaded int8 reranking embeddings");
   } catch (e) {
@@ -541,8 +554,8 @@ function showModeBadge() {
   badge.title = isLite
     ? "Lite mode (potion-base-8M). Add ?mode=full for higher quality."
     : BINARY_ONLY
-    ? "Full mode (mdbr-leaf-mt). Binary-only scoring (mobile). Add ?scoring=rerank for higher quality."
-    : "Full mode (mdbr-leaf-mt). Binary+rerank scoring. Add ?mode=lite for lower memory.";
+      ? "Full mode (mdbr-leaf-mt). Binary-only scoring (mobile). Add ?scoring=rerank for higher quality."
+      : "Full mode (mdbr-leaf-mt). Binary+rerank scoring. Add ?mode=lite for lower memory.";
   document.querySelector(".brand")?.appendChild(badge);
 }
 
@@ -557,7 +570,7 @@ function showLiteFallbackBanner() {
   const banner = document.createElement("div");
   banner.className = "lite-fallback-banner";
   banner.innerHTML = `
-    <span>The full AI model couldn\u2019t load on this device. Running in <strong>Lite mode</strong> \u2014 results may be less accurate. For best quality, try on a desktop browser.</span>
+    <span>Running in <strong>Lite mode</strong> \u2014 results may be less accurate. The full AI library couldn\u2019t load, likely blocked by an ad-blocker (e.g. uBlock Origin). To enable Full mode, allow <strong>cdn.jsdelivr.net</strong> or <strong>unpkg.com</strong> in your browser extension settings.</span>
     <button class="banner-close" aria-label="Dismiss">&times;</button>`;
   banner.querySelector(".banner-close").addEventListener("click", () => banner.remove());
   document.getElementById("app").prepend(banner);
@@ -638,7 +651,7 @@ function scoreInt4(qvec, int4Data, rangeMin, rangeScale, dims, count, out) {
     const base = i * halfDims;
     for (let d = 0; d < dims; d += 2) {
       const packed = int4Data[base + (d >> 1)];
-      dot += qScaled[d]     * (packed >> 4);
+      dot += qScaled[d] * (packed >> 4);
       dot += qScaled[d + 1] * (packed & 0x0F);
     }
     out[i] = dot;
@@ -731,7 +744,7 @@ function scoreBinaryRerank(qvec, count, out) {
       const base = idx * halfDims;
       for (let d = 0; d < FULL_DIMS; d += 2) {
         const packed = fullEmbInt4[base + (d >> 1)];
-        dot += qScaled[d]     * (packed >> 4);
+        dot += qScaled[d] * (packed >> 4);
         dot += qScaled[d + 1] * (packed & 0x0F);
       }
       out[idx] = dot;
@@ -784,12 +797,12 @@ async function search(query) {
   if (!query) { $results.innerHTML = ""; $status.textContent = ""; return; }
   if (isRateLimited()) { $status.textContent = "Too many searches: please wait a moment."; return; }
 
-  const count   = wordEntries.length;
+  const count = wordEntries.length;
 
   // Instant preview removed: potion no longer loaded in full mode
   $status.textContent = "Searching\u2026";
 
-  const qvec   = await embedQuery(query);
+  const qvec = await embedQuery(query);
   const scored = new Float32Array(count);
 
   const rerankReady = fullEmbInt4 || fullEmbInt8;
@@ -1016,8 +1029,8 @@ function esc(s) {
 // ---------------------------------------------------------------------------
 
 const FEEDBACK_ENDPOINT = "";   // set to a URL to enable; empty = disabled
-const FEEDBACK_KEY      = "wf_fb";
-const FEEDBACK_MAX      = 200;  // max buffered events before oldest are dropped
+const FEEDBACK_KEY = "wf_fb";
+const FEEDBACK_MAX = 200;  // max buffered events before oldest are dropped
 
 /*  --- disabled for now ---
 $results.addEventListener("copy", () => {
@@ -1078,16 +1091,16 @@ document.addEventListener("visibilitychange", () => {
 // ---------------------------------------------------------------------------
 
 const SHOWCASE = [
-  { q: "a feeling of longing for the past",       w: "nostalgia" },
-  { q: "fear of being forgotten",                  w: "athazagoraphobia" },
-  { q: "the art of beautiful handwriting",         w: "calligraphy" },
-  { q: "a word that sounds like what it means",    w: "onomatopoeia" },
-  { q: "pleasure from someone else's misfortune",  w: "schadenfreude" },
-  { q: "unable to be put into words",              w: "ineffable" },
-  { q: "lasting only a very short time",           w: "ephemeral" },
-  { q: "a love of books",                          w: "bibliophilia" },
-  { q: "wanderlust for the sea",                   w: "thalassophilia" },
-  { q: "the smell of rain on dry earth",           w: "petrichor" },
+  { q: "a feeling of longing for the past", w: "nostalgia" },
+  { q: "fear of being forgotten", w: "athazagoraphobia" },
+  { q: "the art of beautiful handwriting", w: "calligraphy" },
+  { q: "a word that sounds like what it means", w: "onomatopoeia" },
+  { q: "pleasure from someone else's misfortune", w: "schadenfreude" },
+  { q: "unable to be put into words", w: "ineffable" },
+  { q: "lasting only a very short time", w: "ephemeral" },
+  { q: "a love of books", w: "bibliophilia" },
+  { q: "wanderlust for the sea", w: "thalassophilia" },
+  { q: "the smell of rain on dry earth", w: "petrichor" },
 ];
 
 let showcaseIdx = 0;
@@ -1122,7 +1135,7 @@ function stopShowcase() {
 // ---------------------------------------------------------------------------
 
 const $hamburger = document.getElementById("nav-hamburger");
-const $navLinks  = document.getElementById("nav-links");
+const $navLinks = document.getElementById("nav-links");
 if ($hamburger && $navLinks) {
   $hamburger.addEventListener("click", () => {
     const open = $navLinks.classList.toggle("open");
@@ -1161,7 +1174,7 @@ document.querySelectorAll(".example-chip").forEach(chip => {
 // ---------------------------------------------------------------------------
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.register("/sw.js").catch(() => { });
 }
 
 init().catch(err => {

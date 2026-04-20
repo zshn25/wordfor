@@ -28,6 +28,17 @@ WordFor is a reverse dictionary where you describe a concept and instantly get t
 
 175,000+ definitions from [Open English WordNet](https://en-word.net/) (CC BY 4.0), Webster's 1913 (public domain), and Moby Thesaurus (public domain). 168K supplementary entries from [Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/) (CC BY-SA 3.0) are used at build time for quality signals only; not redistributed.
 
+
+<!-- 
+## Updating Guide
+
+- Update sitemap.txt version date
+- Update transformers.js (https://cdn.jsdelivr.net/npm/@huggingface/transformers@4/dist/transformers.min.js -> Save as wordfor/vendor/transformers.min.js)
+
+- Clear CloudFlare cache manually
+ -->
+
+
 ### Privacy
 
 Static files served from GitHub Pages through Cloudflare CDN. [GoatCounter](https://www.goatcounter.com/) for cookie-free analytics. No personal data collected.
