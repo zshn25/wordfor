@@ -8,7 +8,7 @@
  *   - Cross-origin (CDN libs): NOT intercepted.
  */
 
-const CACHE_NAME = "wordfor-v13";
+const CACHE_NAME = "wordfor-v14";
 
 const APP_SHELL = [
   "/",
@@ -42,20 +42,21 @@ self.addEventListener("activate", (event) => {
 });
 
 // Fetch strategy: same-origin only
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Only handle same-origin http/https. Let cross-origin (CDN, HF models) pass through.
   if (url.origin !== self.location.origin) return;
   if (url.protocol !== "http:" && url.protocol !== "https:") return;
 
-  // Data files: cache-first (large, content-versioned)
+  // Do NOT intercept navigation
+  if (event.request.mode === "navigate") return;
+
   if (isDataFile(url.pathname)) {
     event.respondWith(cacheFirst(event.request));
     return;
   }
 
-  // App shell: stale-while-revalidate
   event.respondWith(staleWhileRevalidate(event.request));
 });
 
@@ -75,19 +76,37 @@ async function cacheFirst(request) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
   if (cached) return cached;
-  const response = await fetch(request);
-  if (response.ok) {
-    cache.put(request, response.clone());
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (err) {
+    return new Response("Service Unavailable", {
+      status: 503,
+      headers: { "Content-Type": "text/plain" },
+    });
   }
-  return response;
 }
 
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
-  const fetchPromise = fetch(request).then((response) => {
-    if (response.ok) cache.put(request, response.clone());
+
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      cache.put(request, response.clone());
+    }
     return response;
-  }).catch(() => cached);
-  return cached || fetchPromise;
+  } catch (err) {
+    // 👉 GUARANTEE a Response
+    if (cached) return cached;
+
+    return new Response("Service Unavailable", {
+      status: 503,
+      headers: { "Content-Type": "text/plain" },
+    });
+  }
 }

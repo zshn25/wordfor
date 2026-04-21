@@ -1,6 +1,5 @@
 User-agent: *
 Allow: /
-Disallow: /*?q=
 
 Content-Signal: search=yes
 Content-Signal: ai-train=yes
