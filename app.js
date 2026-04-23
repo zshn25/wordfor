@@ -3,8 +3,8 @@
  * © 2025 Zeeshan Khan Suri (zshn25). Licensed under CC-BY-NC-ND-4.0.
  *
  * Default:       mdbr-leaf-mt (query) + mxbai-embed-large (defs) via Transformers.js
- *                Binary (ITQ) first-pass + int8 reranking for near-float32 quality at binary speed.
- * Mobile:        Same model, but pure binary ITQ scoring (no int8 download, saves ~65 MB).
+ *                Binary (ITQ) first-pass + int3 reranking for best quality at binary speed.
+ * Mobile:        Same model, but pure binary ITQ scoring (no rerank download).
  * Lite fallback: potion-base-8M via pure JS static embeddings (sub-1ms)
  *
  * Lite mode activates automatically if the full model fails to load,
@@ -23,6 +23,32 @@ const SHOW_K = 9;
 const DEBOUNCE = 400;
 const RATE_LIMIT_MAX = 15;
 const RATE_LIMIT_MS = 10_000;
+
+// Words that should never surface as top results in a reverse dictionary.
+// These stay in the embedding database (they're useful as variants and context)
+// but are skipped when creating new result groups in topK().
+// Only the primary word (w[0]) is checked — morphological variants are unaffected.
+const RESULT_EXCLUDE = new Set([
+  // Articles and determiners
+  "a", "an", "the",
+  // Coordinating conjunctions
+  "and", "but", "or", "nor", "for", "yet", "so",
+  // Common prepositions
+  "at", "by", "from", "in", "into", "of", "on", "to", "up", "with",
+  // Core auxiliary verbs
+  "be", "been", "being", "is", "are", "was", "were",
+  "have", "has", "had", "do", "does", "did",
+  "will", "would", "shall", "should", "may", "might", "must", "can", "could",
+  // Pronouns
+  "he", "she", "it", "they", "we", "i", "you",
+  "his", "her", "its", "their", "our", "my", "your",
+  "this", "that", "these", "those",
+  // Single-letter non-word entries
+  "b", "c", "d", "e", "f", "g", "h", "j", "k", "l", "m",
+  "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+  // Ultra-generic nouns never useful as a "word you were thinking of"
+  "thing", "stuff", "sort", "kind", "type", "part", "bit", "lot",
+]);
 
 const FULL_MODEL_ID = "onnx-community/mdbr-leaf-mt-ONNX";
 const FULL_DIMS = 384;
@@ -84,6 +110,7 @@ function addProgressRow(id, label) {
 function setProgress(id, pct) {
   const row = document.getElementById(`prog-${id}`);
   if (!row) return;
+  pct = Math.min(100, Math.max(0, pct));
   row.querySelector(".progress-fill").style.width = `${pct}%`;
   row.querySelector(".progress-pct").textContent = `${Math.round(pct)} %`;
 }
@@ -241,9 +268,10 @@ let potionEmbInt4;      // Uint8Array : int4 packed potion embeddings (2 dims/by
 let potionRangeMin;     // Float32Array(256): per-dim min
 let potionRangeScale;   // Float32Array(256): per-dim range
 
-// Full-mode int8 embeddings (for reranking stage 2)
+// Full-mode embeddings (for reranking stage 2)
 let fullEmbInt8;        // Uint8Array : int8 quantized full embeddings
 let fullEmbInt4;        // Uint8Array : int4 packed full embeddings (2 nibbles/byte)
+let fullEmbInt3;        // Uint8Array : int3 packed full embeddings (8 dims/3 bytes)
 let fullRangeMin;       // Float32Array(384): per-dim min
 let fullRangeScale;     // Float32Array(384): per-dim range
 
@@ -405,9 +433,9 @@ async function loadFullModel() {
   tokenizer = await AutoTokenizer.from_pretrained(FULL_MODEL_ID);
   const modelProgress = (p) => {
     // p.progress goes 0-100 for each file download; map to 20%-80% range
-    // if (p.status === "progress" && p.progress != null) {
-    //   setProgress("tf", 20 + p.progress * 0.6);
-    // }
+    if (p.status === "progress" && p.progress != null) {
+      setProgress("tf", 20 + p.progress * 0.6);
+    }
   };
   try {
     model = await timeout(BINARY_ONLY ? 30_000 : 90_000, AutoModel.from_pretrained(FULL_MODEL_ID, {
@@ -454,38 +482,57 @@ async function loadFullModel() {
 
 /**
  * Lazy-load reranking embeddings (desktop only).
- * Tries int4 (~33 MB) first, falls back to int8 (~65 MB).
+ * Tries int3 (~75 MB, best MRR) first, then int4 (~100 MB), then int8 (~200 MB).
  * The app starts with binary-only scoring and upgrades silently.
  */
 async function loadFullRerank() {
   if (BINARY_ONLY) return;
+
+  // Load ranges (shared by all quant formats)
+  const rangesBuf = await fetch(dataUrl("embeddings_ranges.bin")).then(r => r.arrayBuffer());
+  const rd = new Float32Array(rangesBuf);
+  fullRangeMin = rd.subarray(0, FULL_DIMS);
+  fullRangeScale = rd.subarray(FULL_DIMS, FULL_DIMS * 2);
+
+  // Try int3 first (best MRR)
   try {
-    // Try int4 first (half the size of int8)
-    const [int4Buf, rangesBuf] = await Promise.all([
-      fetch(dataUrl("embeddings_int4.bin")).then(r => {
-        if (!r.ok) throw new Error("int4 not found");
+    const [int3Buf, int3RangesBuf] = await Promise.all([
+      fetch(dataUrl("embeddings_int3.bin")).then(r => {
+        if (!r.ok) throw new Error("int3 not found");
         return r.arrayBuffer();
       }),
-      fetch(dataUrl("embeddings_ranges.bin")).then(r => r.arrayBuffer()),
+      fetch(dataUrl("embeddings_int3_ranges.bin")).then(r => {
+        if (!r.ok) throw new Error("int3 ranges not found");
+        return r.arrayBuffer();
+      }),
     ]);
+    fullEmbInt3 = new Uint8Array(int3Buf);
+    const rd3 = new Float32Array(int3RangesBuf);
+    fullRangeMin = rd3.subarray(0, FULL_DIMS);
+    fullRangeScale = rd3.subarray(FULL_DIMS, FULL_DIMS * 2);
+    console.log("Loaded int3 reranking embeddings");
+    return;
+  } catch (e) {
+    console.log("Int3 not available, trying int4:", e.message);
+  }
+
+  // Try int4 (half the size of int8)
+  try {
+    const int4Buf = await fetch(dataUrl("embeddings_int4.bin")).then(r => {
+      if (!r.ok) throw new Error("int4 not found");
+      return r.arrayBuffer();
+    });
     fullEmbInt4 = new Uint8Array(int4Buf);
-    const rd = new Float32Array(rangesBuf);
-    fullRangeMin = rd.subarray(0, FULL_DIMS);
-    fullRangeScale = rd.subarray(FULL_DIMS, FULL_DIMS * 2);
     console.log("Loaded int4 reranking embeddings");
     return;
   } catch (e) {
     console.log("Int4 not available, trying int8:", e.message);
   }
+
+  // Fallback to int8
   try {
-    const [int8Buf, rangesBuf] = await Promise.all([
-      fetch(dataUrl("embeddings_int8.bin")).then(r => r.arrayBuffer()),
-      fetch(dataUrl("embeddings_ranges.bin")).then(r => r.arrayBuffer()),
-    ]);
+    const int8Buf = await fetch(dataUrl("embeddings_int8.bin")).then(r => r.arrayBuffer());
     fullEmbInt8 = new Uint8Array(int8Buf);
-    const rd = new Float32Array(rangesBuf);
-    fullRangeMin = rd.subarray(0, FULL_DIMS);
-    fullRangeScale = rd.subarray(FULL_DIMS, FULL_DIMS * 2);
     console.log("Loaded int8 reranking embeddings");
   } catch (e) {
     console.warn("Reranking embeddings failed, using binary-only scoring:", e.message);
@@ -659,6 +706,39 @@ function scoreInt4(qvec, int4Data, rangeMin, rangeScale, dims, count, out) {
 }
 
 // ---------------------------------------------------------------------------
+// Int3 dot product scoring (8 dims packed per 3 bytes)
+// ---------------------------------------------------------------------------
+
+function scoreInt3(qvec, int3Data, rangeMin, rangeScale, dims, count, out) {
+  const qScaled = new Float32Array(dims);
+  let qOffset = 0;
+  for (let d = 0; d < dims; d++) {
+    qScaled[d] = qvec[d] * rangeScale[d] / 7;
+    qOffset += qvec[d] * rangeMin[d];
+  }
+  const bytesPerEntry = (dims * 3) >> 3;
+  const nGroups = dims >> 3;
+  for (let i = 0; i < count; i++) {
+    let dot = qOffset;
+    const base = i * bytesPerEntry;
+    for (let g = 0; g < nGroups; g++) {
+      const b = base + g * 3;
+      const w = (int3Data[b] << 16) | (int3Data[b + 1] << 8) | int3Data[b + 2];
+      const d8 = g << 3;
+      dot += qScaled[d8]     * ((w >> 21) & 7);
+      dot += qScaled[d8 + 1] * ((w >> 18) & 7);
+      dot += qScaled[d8 + 2] * ((w >> 15) & 7);
+      dot += qScaled[d8 + 3] * ((w >> 12) & 7);
+      dot += qScaled[d8 + 4] * ((w >>  9) & 7);
+      dot += qScaled[d8 + 5] * ((w >>  6) & 7);
+      dot += qScaled[d8 + 6] * ((w >>  3) & 7);
+      dot += qScaled[d8 + 7] * ( w        & 7);
+    }
+    out[i] = dot;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Binary (1-bit) Hamming distance scoring
 // ---------------------------------------------------------------------------
 
@@ -712,7 +792,7 @@ function scoreHamming(qvec, binData, bytesPerEntry, count, out) {
 }
 
 /**
- * Two-stage scoring: binary Hamming first-pass, then int4/int8 dot product reranking.
+ * Two-stage scoring: binary Hamming first-pass, then int3/int4/int8 dot product reranking.
  * Returns float32 scores for all entries (non-candidates get -Infinity).
  */
 function scoreBinaryRerank(qvec, count, out) {
@@ -729,7 +809,36 @@ function scoreBinaryRerank(qvec, count, out) {
   // Fill all with -Infinity, then overwrite reranked candidates
   for (let i = 0; i < count; i++) out[i] = -Infinity;
 
-  if (fullEmbInt4) {
+  if (fullEmbInt3) {
+    // Rerank with int3 (best MRR, 8 dims / 3 bytes)
+    const qScaled = new Float32Array(FULL_DIMS);
+    let qOffset = 0;
+    for (let d = 0; d < FULL_DIMS; d++) {
+      qScaled[d] = qvec[d] * fullRangeScale[d] / 7;
+      qOffset += qvec[d] * fullRangeMin[d];
+    }
+    const bytesPerEntry = (FULL_DIMS * 3) >> 3;
+    const nGroups = FULL_DIMS >> 3;
+    for (let j = 0; j < k; j++) {
+      const idx = topIdx[j];
+      let dot = qOffset;
+      const base = idx * bytesPerEntry;
+      for (let g = 0; g < nGroups; g++) {
+        const b = base + g * 3;
+        const w = (fullEmbInt3[b] << 16) | (fullEmbInt3[b + 1] << 8) | fullEmbInt3[b + 2];
+        const d8 = g << 3;
+        dot += qScaled[d8]     * ((w >> 21) & 7);
+        dot += qScaled[d8 + 1] * ((w >> 18) & 7);
+        dot += qScaled[d8 + 2] * ((w >> 15) & 7);
+        dot += qScaled[d8 + 3] * ((w >> 12) & 7);
+        dot += qScaled[d8 + 4] * ((w >>  9) & 7);
+        dot += qScaled[d8 + 5] * ((w >>  6) & 7);
+        dot += qScaled[d8 + 6] * ((w >>  3) & 7);
+        dot += qScaled[d8 + 7] * ( w        & 7);
+      }
+      out[idx] = dot;
+    }
+  } else if (fullEmbInt4) {
     // Rerank with int4 (packed nibbles)
     const qScaled = new Float32Array(FULL_DIMS);
     let qOffset = 0;
@@ -805,7 +914,7 @@ async function search(query) {
   const qvec = await embedQuery(query);
   const scored = new Float32Array(count);
 
-  const rerankReady = fullEmbInt4 || fullEmbInt8;
+  const rerankReady = fullEmbInt3 || fullEmbInt4 || fullEmbInt8;
 
   if (fullReady) {
     if (fullBinaryReady && rerankReady) {
@@ -844,10 +953,10 @@ function stemWord(word) {
   if (w.length < 7) return null;
   // Strip common suffixes (longest first to avoid partial matches)
   const suffixes = [
-    "ically", "ation", "ition",
+    "ational", "ionally", "ically", "ation", "ition",
     "ness", "ment", "ible", "able",
     "ical", "ious", "eous",
-    "ist", "ism", "ous", "ive", "ful", "ing", "ant", "ent", "ial",
+    "ist", "ism", "ous", "ive", "ful", "ing", "ant", "ent", "ial", "ion",
     "ic", "al", "ly", "er", "ed", "ia",
   ];
   for (const suf of suffixes) {
@@ -916,22 +1025,24 @@ function topK(scored, count) {
     }
     if (groupKey && groups.has(groupKey)) {
       const g = groups.get(groupKey);
-      if (g.defs.length < 3) {
+      if (!entry.h && g.defs.length < 3) {
         g.defs.push({ d: entry.d, p: entry.p, score: itemScore });
-        for (const w of entry.w) {
-          if (!g.w.includes(w)) g.w.push(w);
-          wordToGroup.set(w.toLowerCase(), groupKey);
-          const s = stemWord(w);
-          if (s) stemToGroup.set(s, groupKey);
-        }
-        if (entry.s) for (const syn of entry.s) {
-          if (!g.s.includes(syn)) g.s.push(syn);
-        }
+      }
+      for (const w of entry.w) {
+        if (!g.w.includes(w)) g.w.push(w);
+        wordToGroup.set(w.toLowerCase(), groupKey);
+        const s = stemWord(w);
+        if (s) stemToGroup.set(s, groupKey);
+      }
+      if (entry.s) for (const syn of entry.s) {
+        if (!g.s.includes(syn)) g.s.push(syn);
       }
     } else {
       if (order.length >= TOP_K) continue;
       const primary = entry.w[0].toLowerCase();
-      const g = { w: [...entry.w], s: entry.s ? [...entry.s] : [], defs: [{ d: entry.d, p: entry.p, score: itemScore }], score: itemScore };
+      if (RESULT_EXCLUDE.has(primary)) continue;  // skip ultra-generic headwords as results
+      const defs = entry.h ? [] : [{ d: entry.d, p: entry.p, score: itemScore }];
+      const g = { w: [...entry.w], s: entry.s ? [...entry.s] : [], defs, score: itemScore };
       groups.set(primary, g);
       order.push(primary);
       for (const w of entry.w) {
@@ -941,7 +1052,7 @@ function topK(scored, count) {
       }
     }
   }
-  return order.map(k => groups.get(k));
+  return order.map(k => groups.get(k)).filter(g => g.defs.length > 0);
 }
 
 // ---------------------------------------------------------------------------

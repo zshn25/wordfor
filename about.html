@@ -18,7 +18,7 @@
 
   <link rel="icon" href="/favicon.ico" sizes="16x16" type="image/x-icon">
   <link rel="icon"
-    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%234F46E5'/><text x='16' y='22' text-anchor='middle' fill='white' font-family='Georgia,serif' font-size='18' font-weight='bold'>W</text></svg>"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%237C3AED'/><text x='16' y='22' text-anchor='middle' fill='white' font-family='Georgia,serif' font-size='18' font-weight='bold'>W</text></svg>"
     type="image/svg+xml">
 
   <script type="application/ld+json">
@@ -145,7 +145,7 @@
             <h3>Match</h3>
             <p>A tiny AI model converts your description into a meaning vector and compares it against 350,000+
               dictionary definitions using 1-bit binary scoring. On desktop, a two-stage pipeline narrows candidates via
-              fast Hamming distance, then reranks the top 500 with int4 precision. On mobile, pure binary scoring keeps
+              fast Hamming distance, then reranks the top 500 with int3 precision. On mobile, pure binary scoring keeps
               downloads small (~30 MB).</p>
           </div>
         </div>
@@ -183,7 +183,7 @@
           target="_blank" rel="noopener">mdbr-leaf-mt</a>) running via <a
           href="https://huggingface.co/docs/transformers.js" target="_blank" rel="noopener">Transformers.js</a> to
         convert your description into a meaning vector, then compares it against 350,000+ pre-embedded dictionary
-        definitions using a two-stage binary + int4 scoring pipeline. A lighter <a
+        definitions using a two-stage binary + int3 scoring pipeline. A lighter <a
           href="https://huggingface.co/minishlab/potion-base-8M" target="_blank" rel="noopener">static embedding</a>
         mode is available as fallback.
       </p>
@@ -247,7 +247,7 @@
         WordFor has no server, no database, and no cookies. The AI model
         and dictionary data are downloaded once and cached in your browser. Every search
         happens locally on your device. Your queries are never sent anywhere.
-        We use <a href="https://www.goatcounter.com/" target="_blank" rel="noopener">GoatCounter</a> for
+        I use <a href="https://www.goatcounter.com/" target="_blank" rel="noopener">GoatCounter</a> for
         privacy-friendly,
         cookie-free page-view analytics: no personal data is collected.
       </p>

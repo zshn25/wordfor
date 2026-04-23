@@ -2,47 +2,39 @@
 
 ![wordfor](wordfor.gif)
 
-**A free, private reverse dictionary using sentence embeddings, 1-bit quantization, and static model inference — with zero server-side compute.**
+**A free, private reverse dictionary using sentence embeddings, 1-bit quantization, and static model inference - zero server-side compute.**
 
-Read the full blog post: https://zshn25.github.io/wordfor-reverse-dictionary
+[Blog post](https://zshn25.github.io/wordfor-reverse-dictionary) | [Try it](https://wordfor.xyz)
 
-## Quick Summary
+## Architecture
 
-WordFor is a reverse dictionary where you describe a concept and instantly get the word. It runs entirely in the browser: no server, no database, no cookies.
+- **Full mode (desktop)**: Asymmetric retrieval: definitions encoded offline by [mxbai-embed-large-v1](https://huggingface.co/mixedbread-ai/mxbai-embed-large-v1) (1024d, MRL-truncated to 384d), queries encoded at runtime by [mdbr-leaf-mt](https://huggingface.co/MongoDB/mdbr-leaf-mt) (22M params) via [Transformers.js](https://huggingface.co/docs/transformers.js). Two-stage scoring: 1-bit binary ITQ Hamming first-pass (~13ms) + int3 reranking of top-500 candidates.
+- **Full mode (mobile)**: Same model, pure 1-bit binary ITQ scoring only. ~30 MB total download.
+- **Lite mode**: Knowledge-distilled static embeddings (256d, fine-tuned from mxbai-embed-large via Model2Vec). Sub-1ms queries via WASM or pure JS. Automatic fallback when ONNX model can't load (e.g. iOS).
 
-### Architecture
+## Evaluation (67-query test set)
 
-- **Full mode (desktop)**: Asymmetric retrieval — definitions encoded offline by [mxbai-embed-large-v1](https://huggingface.co/mixedbread-ai/mxbai-embed-large-v1) (1024d, MRL-truncated to 384d), queries encoded at runtime by [mdbr-leaf-mt](https://huggingface.co/MongoDB/mdbr-leaf-mt) (22M params) via [Transformers.js](https://huggingface.co/docs/transformers.js). Two-stage scoring: 1-bit binary Hamming first-pass (~13ms) + int4 reranking of top-500 candidates (with int8 fallback support).
-- **Full mode (mobile)**: Same model, pure 1-bit binary scoring (no int8 rerank). ~30 MB total download vs ~95 MB on desktop.
-- **Lite mode**: [potion-base-8M](https://huggingface.co/minishlab/potion-base-8M) static embeddings (bag-of-words). Sub-1ms queries, used as fallback.
+| Mode | Config | MRR | Hit@1 | Hit@6 |
+|------|--------|:---:|:-----:|:-----:|
+| Full | binary + int3 rerank (desktop) | 0.644 | 37/67 | 52/67 |
+| Full | pure binary ITQ (mobile) | 0.563 | 30/67 | 52/67 |
+| Lite | distilled-mxbai fine-tuned, int4 | 0.566 | 33/67 | 42/67 |
 
-### Evaluation (67-query test set)
+## Dictionary
 
-| Mode | MRR | Hit@1 | Hit@6 |
-|------|:---:|:-----:|:-----:|
-| Full binary + int8 rerank | 0.6296 | 36/67 | 54/67 |
-| Full pure binary (1-bit) | 0.5782 | 32/67 | 51/67 |
-| Lite (potion int8) | 0.1248 | 4/67 | 14/67 |
+350,000+ definitions from 5 public-domain sources: [Open English WordNet 2025](https://en-word.net/) (CC BY 4.0), Webster's 1913, GCIDE Webster portion, [Century Dictionary](https://en.wikipedia.org/wiki/Century_Dictionary) (1889-1911), and 61 LLM-augmented entries (CC0). Enriched with [Moby Thesaurus](https://en.wikipedia.org/wiki/Moby_Project) synonyms. [Wiktionary](https://kaikki.org/) (CC BY-SA 3.0) and [ConceptNet 5.7](https://conceptnet.io/) (CC BY-SA 4.0) used at build time for quality signals and embedding enrichment only; not redistributed.
 
-### Dictionary
-
-175,000+ definitions from [Open English WordNet](https://en-word.net/) (CC BY 4.0), Webster's 1913 (public domain), and Moby Thesaurus (public domain). 168K supplementary entries from [Wiktionary](https://en.wiktionary.org/) via [kaikki.org](https://kaikki.org/) (CC BY-SA 3.0) are used at build time for quality signals only; not redistributed.
-
-
-<!-- 
-## Updating Guide
-
-- Update sitemap.txt version date
-- Update transformers.js (https://cdn.jsdelivr.net/npm/@huggingface/transformers@4/dist/transformers.min.js -> Save as wordfor/vendor/transformers.min.js)
-
-- Clear CloudFlare cache manually
- -->
-
-
-### Privacy
+## Privacy
 
 Static files served from GitHub Pages through Cloudflare CDN. [GoatCounter](https://www.goatcounter.com/) for cookie-free analytics. No personal data collected.
 
+<!--
+## Updating Guide
+- Update sitemap.txt version date
+- Update transformers.js (https://cdn.jsdelivr.net/npm/@huggingface/transformers@4/dist/transformers.min.js -> Save as wordfor/vendor/transformers.min.js)
+- Clear CloudFlare cache manually
+-->
+
 ---
 
-© 2025 Zeeshan Khan Suri. Licensed under CC-BY-NC-ND-4.0.
+&copy; 2025 Zeeshan Khan Suri. Licensed under CC-BY-NC-ND-4.0.

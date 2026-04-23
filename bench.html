@@ -53,10 +53,13 @@
     </thead>
     <tbody>
       <!-- EVAL_START (do not remove: compare_eval.py replaces rows between these markers) -->
-      <tr><td>Potion base int4</td><td>Lite</td><td class="num">0.4290</td><td class="num">22/67</td><td class="num">38/67</td><td>distilled-mxbai base, int4 scoring</td></tr>
-      <tr><td>Potion fine-tuned int4</td><td>Lite</td><td class="num">0.4815</td><td class="num">26/67</td><td class="num">40/67</td><td>distilled-mxbai fine-tuned, int4 scoring</td></tr>
-      <tr><td>Full pure binary (ITQ)</td><td>Full</td><td class="num">0.5308</td><td class="num">28/67</td><td class="num">45/67</td><td>mdbr-leaf-mt, binary ITQ (mobile)</td></tr>
-      <tr><td>Full binary+int4 rerank</td><td>Full</td><td class="num">0.6025</td><td class="num">35/67</td><td class="num">50/67</td><td>mdbr-leaf-mt, binary+int4 rerank (desktop)</td></tr>
+      <tr><td>Potion base int4</td><td>Lite</td><td class="num">0.5033</td><td class="num">27/67</td><td class="num">42/67</td><td>distilled-mxbai base, int4 scoring</td></tr>
+      <tr><td>Potion fine-tuned int4</td><td>Lite</td><td class="num">0.5662</td><td class="num">33/67</td><td class="num">42/67</td><td>distilled-mxbai fine-tuned, int4 scoring</td></tr>
+      <tr><td>Full pure binary (ITQ)</td><td>Full</td><td class="num">0.5629</td><td class="num">30/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, 1-bit binary ITQ, 48 bytes/entry</td></tr>
+      <tr><td>Full pure int2</td><td>Full</td><td class="num">0.5671</td><td class="num">31/67</td><td class="num">46/67</td><td>mdbr-leaf-mt, pure int2, 96 bytes/entry</td></tr>
+      <tr><td>Full pure int3</td><td>Full</td><td class="num">0.6437</td><td class="num">37/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, pure int3, 144 bytes/entry</td></tr>
+      <tr><td>Full pure int4</td><td>Full</td><td class="num">0.6088</td><td class="num">34/67</td><td class="num">51/67</td><td>mdbr-leaf-mt, pure int4, 192 bytes/entry</td></tr>
+      <tr><td>Full binary+int4 rerank</td><td>Full</td><td class="num">0.6090</td><td class="num">34/67</td><td class="num">51/67</td><td>mdbr-leaf-mt, binary+int4 rerank, 240 bytes/entry (desktop)</td></tr>
       <!-- EVAL_END -->
     </tbody>
   </table>
@@ -73,7 +76,7 @@
 
   <!-- Scoring benchmark results -->
   <h2>Scoring Performance (per-query, all entries)</h2>
-  <p class="info">Benchmarks the raw vector scoring step only (no model inference). 20 iterations, random query vectors.</p>
+  <p class="info">Raw vector scoring speed for each quantization format — no model inference. 20 iterations, random query vectors. Use this alongside the offline MRR table above to choose the best format.</p>
   <table id="score-table" style="display:none">
     <thead>
       <tr><th>Method</th><th>Data Size</th><th>Avg (ms)</th><th>P50 (ms)</th><th>P99 (ms)</th><th>Speed</th></tr>
@@ -82,8 +85,8 @@
   </table>
 
   <!-- E2E benchmark results -->
-  <h2>End-to-End Query Latency</h2>
-  <p class="info">Full pipeline: query encoding (model inference) + scoring + ranking.</p>
+  <h2>End-to-End Latency</h2>
+  <p class="info">Full pipeline: model load + tokenization + inference + scoring + ranking.</p>
   <table>
     <thead>
       <tr><th>Test</th><th>Status</th><th>Load (s)</th><th>Query avg (ms)</th><th>Notes</th></tr>
@@ -96,7 +99,6 @@
 
 <script type="module">
 const DATA_ROOT = "data";
-const FULL_MODEL_ID = "onnx-community/mdbr-leaf-mt-ONNX";
 const FULL_DIMS = 384;
 const LITE_DIMS = 256;
 const BINARY_BYTES = FULL_DIMS / 8;
@@ -168,6 +170,8 @@ for (let i = 0; i < 256; i++) {
 let wordCount = 0;
 let fullEmbInt8, fullRangeMin, fullRangeScale;
 let fullEmbInt4;
+let fullEmbInt3, int3RangeMin, int3RangeScale;
+let fullEmbInt2, int2RangeMin, int2RangeScale;
 let fullEmbBinary;
 let potionEmbInt4, potionRangeMin, potionRangeScale;
 let potionModel;
@@ -306,6 +310,53 @@ function scoreInt4(qvec, int4Data, rangeMin, rangeScale, dims, count, out) {
   }
 }
 
+function scoreInt3(qvec, int3Data, rangeMin, rangeScale, dims, count, out) {
+  // 8 dims packed per 3 bytes; dims must be multiple of 8
+  const qScaled = new Float32Array(dims);
+  let qOffset = 0;
+  for (let d = 0; d < dims; d++) { qScaled[d] = qvec[d] * rangeScale[d] / 7; qOffset += qvec[d] * rangeMin[d]; }
+  const bytesPerEntry = (dims * 3) >> 3; // dims * 3 / 8
+  const nGroups = dims >> 3;             // dims / 8
+  for (let i = 0; i < count; i++) {
+    let dot = qOffset;
+    const base = i * bytesPerEntry;
+    for (let g = 0; g < nGroups; g++) {
+      const b = base + g * 3;
+      const w = (int3Data[b] << 16) | (int3Data[b + 1] << 8) | int3Data[b + 2];
+      const d8 = g << 3;
+      dot += qScaled[d8]     * ((w >> 21) & 7);
+      dot += qScaled[d8 + 1] * ((w >> 18) & 7);
+      dot += qScaled[d8 + 2] * ((w >> 15) & 7);
+      dot += qScaled[d8 + 3] * ((w >> 12) & 7);
+      dot += qScaled[d8 + 4] * ((w >>  9) & 7);
+      dot += qScaled[d8 + 5] * ((w >>  6) & 7);
+      dot += qScaled[d8 + 6] * ((w >>  3) & 7);
+      dot += qScaled[d8 + 7] * ( w        & 7);
+    }
+    out[i] = dot;
+  }
+}
+
+function scoreInt2(qvec, int2Data, rangeMin, rangeScale, dims, count, out) {
+  // 4 dims packed per byte
+  const qScaled = new Float32Array(dims);
+  let qOffset = 0;
+  for (let d = 0; d < dims; d++) { qScaled[d] = qvec[d] * rangeScale[d] / 3; qOffset += qvec[d] * rangeMin[d]; }
+  const bytesPerEntry = dims >> 2; // dims / 4
+  for (let i = 0; i < count; i++) {
+    let dot = qOffset;
+    const base = i * bytesPerEntry;
+    for (let d = 0; d < dims; d += 4) {
+      const packed = int2Data[base + (d >> 2)];
+      dot += qScaled[d]     * ((packed >> 6) & 3);
+      dot += qScaled[d + 1] * ((packed >> 4) & 3);
+      dot += qScaled[d + 2] * ((packed >> 2) & 3);
+      dot += qScaled[d + 3] * ( packed       & 3);
+    }
+    out[i] = dot;
+  }
+}
+
 function scoreBinaryRerankInt4(qvec, count, out) {
   const hamming = new Float32Array(count);
   scoreHamming(qvec, fullEmbBinary, BINARY_BYTES, count, hamming);
@@ -342,12 +393,16 @@ async function loadData() {
     const meta = await fetch(`${DATA_ROOT}/meta.json`).then(r => r.json());
     wordCount = meta.count;
 
-    const [int8Buf, rangesBuf, binaryBuf, itqBuf, int4Buf, pInt4Buf, pRangesBuf, vocabText, matrixBuf] = await Promise.all([
+    const [int8Buf, rangesBuf, binaryBuf, itqBuf, int4Buf, int3Buf, int3RangesBuf, int2Buf, int2RangesBuf, pInt4Buf, pRangesBuf, vocabText, matrixBuf] = await Promise.all([
       fetch(`${DATA_ROOT}/embeddings_int8.bin`).then(r => r.arrayBuffer()),
       fetch(`${DATA_ROOT}/embeddings_ranges.bin`).then(r => r.arrayBuffer()),
       fetch(`${DATA_ROOT}/embeddings_binary.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
       fetch(`${DATA_ROOT}/embeddings_itq.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
       fetch(`${DATA_ROOT}/embeddings_int4.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
+      fetch(`${DATA_ROOT}/embeddings_int3.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
+      fetch(`${DATA_ROOT}/embeddings_int3_ranges.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
+      fetch(`${DATA_ROOT}/embeddings_int2.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
+      fetch(`${DATA_ROOT}/embeddings_int2_ranges.bin`).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null),
       fetch(`${DATA_ROOT}/embeddings_potion_int4.bin`).then(r => r.arrayBuffer()),
       fetch(`${DATA_ROOT}/embeddings_potion_ranges.bin`).then(r => r.arrayBuffer()),
       fetch(`${DATA_ROOT}/vocab.txt`).then(r => r.text()),
@@ -361,6 +416,18 @@ async function loadData() {
 
     if (binaryBuf) fullEmbBinary = new Uint8Array(binaryBuf);
     if (int4Buf) fullEmbInt4 = new Uint8Array(int4Buf);
+    if (int3Buf && int3RangesBuf) {
+      fullEmbInt3 = new Uint8Array(int3Buf);
+      const rd3 = new Float32Array(int3RangesBuf);
+      int3RangeMin = rd3.subarray(0, FULL_DIMS);
+      int3RangeScale = rd3.subarray(FULL_DIMS, FULL_DIMS * 2);
+    }
+    if (int2Buf && int2RangesBuf) {
+      fullEmbInt2 = new Uint8Array(int2Buf);
+      const rd2 = new Float32Array(int2RangesBuf);
+      int2RangeMin = rd2.subarray(0, FULL_DIMS);
+      int2RangeScale = rd2.subarray(FULL_DIMS, FULL_DIMS * 2);
+    }
     if (itqBuf) {
       const itqFloat = new Float32Array(itqBuf);
       itqMean = itqFloat.subarray(0, FULL_DIMS);
@@ -440,15 +507,22 @@ window.runScoringBench = async function() {
 
   // Full binary (384d): ITQ-rotated
   if (fullEmbBinary) {
-    log("  Benchmarking: Full binary (384d)...");
-    results.push(benchScoreMethod("Full binary (384d)", (q, out) => scoreHamming(q, fullEmbBinary, BINARY_BYTES, wordCount, out), FULL_DIMS));
+    log("  Benchmarking: Full binary 1-bit (384d)...");
+    results.push(benchScoreMethod("Full binary 1-bit (384d)", (q, out) => scoreHamming(q, fullEmbBinary, BINARY_BYTES, wordCount, out), FULL_DIMS));
     await new Promise(r => setTimeout(r, 10));
   }
 
-  // Binary + int8 rerank
-  if (fullEmbBinary && fullEmbInt8) {
-    log("  Benchmarking: Binary+int8 rerank...");
-    results.push(benchScoreMethod("Binary+int8 rerank", (q, out) => scoreBinaryRerank(q, wordCount, out), FULL_DIMS));
+  // Full int2 (384d)
+  if (fullEmbInt2) {
+    log("  Benchmarking: Full int2 (384d)...");
+    results.push(benchScoreMethod("Full int2 (384d)", (q, out) => scoreInt2(q, fullEmbInt2, int2RangeMin, int2RangeScale, FULL_DIMS, wordCount, out), FULL_DIMS));
+    await new Promise(r => setTimeout(r, 10));
+  }
+
+  // Full int3 (384d)
+  if (fullEmbInt3) {
+    log("  Benchmarking: Full int3 (384d)...");
+    results.push(benchScoreMethod("Full int3 (384d)", (q, out) => scoreInt3(q, fullEmbInt3, int3RangeMin, int3RangeScale, FULL_DIMS, wordCount, out), FULL_DIMS));
     await new Promise(r => setTimeout(r, 10));
   }
 
@@ -456,6 +530,13 @@ window.runScoringBench = async function() {
   if (fullEmbInt4) {
     log("  Benchmarking: Full int4 (384d)...");
     results.push(benchScoreMethod("Full int4 (384d)", (q, out) => scoreInt4(q, fullEmbInt4, fullRangeMin, fullRangeScale, FULL_DIMS, wordCount, out), FULL_DIMS));
+    await new Promise(r => setTimeout(r, 10));
+  }
+
+  // Binary + int8 rerank
+  if (fullEmbBinary && fullEmbInt8) {
+    log("  Benchmarking: Binary+int8 rerank...");
+    results.push(benchScoreMethod("Binary+int8 rerank", (q, out) => scoreBinaryRerank(q, wordCount, out), FULL_DIMS));
     await new Promise(r => setTimeout(r, 10));
   }
 
@@ -474,9 +555,11 @@ window.runScoringBench = async function() {
   const fastestAvg = Math.min(...results.map(r => r.avg));
   const sizes = {
     "Full int8 (384d)": `${(fullEmbInt8.byteLength / 1e6).toFixed(0)} MB`,
-    "Full binary (384d)": fullEmbBinary ? `${(fullEmbBinary.byteLength / 1e6).toFixed(0)} MB` : "N/A",
-    "Binary+int8 rerank": fullEmbBinary && fullEmbInt8 ? `${((fullEmbBinary.byteLength + fullEmbInt8.byteLength) / 1e6).toFixed(0)} MB` : "N/A",
+    "Full binary 1-bit (384d)": fullEmbBinary ? `${(fullEmbBinary.byteLength / 1e6).toFixed(0)} MB` : "N/A",
+    "Full int2 (384d)": fullEmbInt2 ? `${(fullEmbInt2.byteLength / 1e6).toFixed(0)} MB` : "N/A",
+    "Full int3 (384d)": fullEmbInt3 ? `${(fullEmbInt3.byteLength / 1e6).toFixed(0)} MB` : "N/A",
     "Full int4 (384d)": fullEmbInt4 ? `${(fullEmbInt4.byteLength / 1e6).toFixed(0)} MB` : "N/A",
+    "Binary+int8 rerank": fullEmbBinary && fullEmbInt8 ? `${((fullEmbBinary.byteLength + fullEmbInt8.byteLength) / 1e6).toFixed(0)} MB` : "N/A",
     "Binary+int4 rerank": fullEmbBinary && fullEmbInt4 ? `${((fullEmbBinary.byteLength + fullEmbInt4.byteLength) / 1e6).toFixed(0)} MB` : "N/A",
     "Potion int4 (256d)": `${(potionEmbInt4.byteLength / 1e6).toFixed(0)} MB`,
   };
@@ -505,8 +588,13 @@ window.runScoringBench = async function() {
   log("  Scoring benchmark complete.\n");
 };
 
+const FULL_MODEL_ID = "onnx-community/mdbr-leaf-mt-ONNX";
+const QUERY_PREFIX = "Represent this sentence for searching relevant passages: ";
+
 // --- E2E benchmark ---
 const E2E_TESTS = [
+  // { id: "full-q8", name: "Full ONNX (q8, WASM)" },
+  // { id: "full-q4f16", name: "Full ONNX (q4f16, WASM)" },
   { id: "lite", name: "Lite (potion, pure JS)" },
   { id: "lite-wasm", name: "Lite (potion, WASM)" },
   { id: "full-wasm", name: "Full (q8, WASM)" },
@@ -541,7 +629,84 @@ window.runE2E = async function() {
   E2E_TESTS.forEach(addE2ERow);
   log("\n=== E2E Benchmark ===");
 
-  // Lite
+  // // --- Full ONNX model tests ---
+  // async function runFullONNX(testId, dtype) {
+  //   try {
+  //     updateE2ERow(testId, "loading lib...");
+  //     const lw0 = performance.now();
+
+  //     // Load Transformers.js
+  //     const SOURCES = [
+  //       "/vendor/transformers.min.js",
+  //       "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4",
+  //       "https://unpkg.com/@huggingface/transformers@4",
+  //     ];
+  //     let imported;
+  //     for (const src of SOURCES) {
+  //       try { imported = await import(src); break; } catch { /* try next */ }
+  //     }
+  //     if (!imported) throw new Error("Transformers.js unavailable");
+
+  //     const { AutoModel, AutoTokenizer, env } = imported;
+  //     env.allowLocalModels = true;
+  //     env.allowRemoteModels = false;
+
+  //     updateE2ERow(testId, "loading model...");
+  //     const tokenizer = await AutoTokenizer.from_pretrained(FULL_MODEL_ID);
+  //     const model = await AutoModel.from_pretrained(FULL_MODEL_ID, {
+  //       dtype, device: "wasm",
+  //       session_options: { enableCpuMemArena: false },
+  //     });
+
+  //     // Warm up
+  //     updateE2ERow(testId, "warming up...");
+  //     const warmInput = await tokenizer("warm up", { padding: true, truncation: true });
+  //     await model(warmInput);
+
+  //     const loadTime = (performance.now() - lw0) / 1000;
+
+  //     // Query
+  //     updateE2ERow(testId, "querying...");
+  //     const queryTimes = [];
+  //     for (const q of QUERIES) {
+  //       const t = performance.now();
+  //       const inputs = await tokenizer(QUERY_PREFIX + q, { padding: true, truncation: true });
+  //       const { sentence_embedding } = await model(inputs);
+  //       const emb1024 = sentence_embedding.data;
+
+  //       // MRL truncation to 384d + re-normalize
+  //       const vec = new Float32Array(FULL_DIMS);
+  //       for (let i = 0; i < FULL_DIMS; i++) vec[i] = emb1024[i];
+  //       let norm = 0;
+  //       for (let i = 0; i < FULL_DIMS; i++) norm += vec[i] * vec[i];
+  //       norm = Math.sqrt(norm) || 1e-32;
+  //       for (let i = 0; i < FULL_DIMS; i++) vec[i] /= norm;
+
+  //       // Score with binary + int4 rerank (deployed pipeline)
+  //       const out = new Float32Array(wordCount);
+  //       if (fullEmbBinary && fullEmbInt4) {
+  //         scoreBinaryRerankInt4(vec, wordCount, out);
+  //       } else if (fullEmbBinary) {
+  //         scoreHamming(vec, fullEmbBinary, BINARY_BYTES, wordCount, out);
+  //       } else {
+  //         scoreInt8(vec, fullEmbInt8, fullRangeMin, fullRangeScale, FULL_DIMS, wordCount, out);
+  //       }
+  //       queryTimes.push(performance.now() - t);
+  //     }
+  //     const avgQuery = queryTimes.reduce((a, b) => a + b, 0) / queryTimes.length;
+  //     const scoringMethod = fullEmbBinary && fullEmbInt4 ? "bin+int4 rerank" : fullEmbBinary ? "binary" : "int8";
+  //     updateE2ERow(testId, "done", loadTime, avgQuery, `${dtype}, ${scoringMethod}, ${FULL_DIMS}d`);
+  //     log(`  ${testId}: load=${loadTime.toFixed(1)}s, avg=${avgQuery.toFixed(1)}ms (${scoringMethod})`);
+  //   } catch (err) {
+  //     updateE2ERow(testId, "fail", null, null, err.message);
+  //     log(`  ${testId}: FAILED - ${err.message}`);
+  //   }
+  // }
+
+  // await runFullONNX("full-q8", "q8");
+  // await runFullONNX("full-q4f16", "q4f16");
+
+  // --- Lite (pure JS) ---
   updateE2ERow("lite", "running...");
   const liteTimes = [];
   for (const q of QUERIES) {
@@ -555,7 +720,7 @@ window.runE2E = async function() {
   updateE2ERow("lite", "done", 0, liteAvg, `${LITE_DIMS}d, scoring only (no model load)`);
   log(`  Lite (JS): avg=${liteAvg.toFixed(1)}ms`);
 
-  // Lite WASM
+  // --- Lite WASM ---
   try {
     updateE2ERow("lite-wasm", "loading...");
     const lw0 = performance.now();

@@ -1,26 +1,26 @@
 {
-  "build_date": "2026-04-15T13:25:02",
-  "total_entries": 350238,
+  "build_date": "2026-04-23T12:44:23",
+  "total_entries": 545974,
   "sources": {
     "oewn": {
       "name": "Open English WordNet 2025+",
       "license": "CC-BY-4.0",
       "url": "https://github.com/globalwordnet/english-wordnet/releases/download/2025-edition/english-wordnet-2025-plus-json.zip",
-      "entries": 110360,
+      "entries": 110359,
       "redistributed": true
     },
     "webster": {
       "name": "Webster's Unabridged Dictionary (1913)",
       "license": "Public Domain",
       "url": "https://raw.githubusercontent.com/adambom/dictionary/master/dictionary.json",
-      "entries": 62955,
+      "entries": 61930,
       "redistributed": true
     },
     "gcide": {
       "name": "GCIDE (Webster 1913 public domain portion)",
       "license": "Public Domain (Webster 1913 content only)",
       "url": "https://gcide.gnu.org.ua/",
-      "entries": 40870,
+      "entries": 39784,
       "note": "Only entries sourced from '1913 Webster' are used",
       "redistributed": true
     },
@@ -28,7 +28,7 @@
       "name": "Century Dictionary (1889-1911)",
       "license": "Public Domain",
       "url": "https://github.com/hupong/century-dictionary",
-      "entries": 136053,
+      "entries": 138080,
       "redistributed": true
     },
     "moby": {
@@ -37,6 +37,13 @@
       "url": "https://raw.githubusercontent.com/words/moby/master/words.txt",
       "note": "Synonyms enrichment only",
       "redistributed": true
+    },
+    "moby_common": {
+      "name": "Moby Words II COMMON",
+      "license": "Public Domain",
+      "url": "https://raw.githubusercontent.com/elitejake/Moby-Project/main/Moby%20Words%20II/COMMON.TXT",
+      "note": "Build-time quality signal (cross-dictionary word coverage). Not redistributed.",
+      "redistributed": false
     },
     "wiktionary": {
       "name": "Wiktionary via kaikki.org",
@@ -51,6 +58,14 @@
       "url": "https://s3.amazonaws.com/conceptnet/downloads/2019/edges/conceptnet-assertions-5.7.0.csv.gz",
       "note": "Build-time quality signals only, NOT redistributed in words.json",
       "redistributed": false
+    },
+    "llm_augmented": {
+      "name": "LLM-augmented definitions (Claude/Anthropic)",
+      "license": "CC0 (factual definitions of real concepts)",
+      "url": "llm_augmented.json",
+      "entries": 61,
+      "note": "Curated definitions for words absent from PD sources and improved senses for terse existing entries.",
+      "redistributed": true
     }
   },
   "quality_scoring": {
