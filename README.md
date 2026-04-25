@@ -29,6 +29,12 @@
 Static files served from GitHub Pages through Cloudflare CDN. [GoatCounter](https://www.goatcounter.com/) for cookie-free analytics. No personal data collected.
 
 <!--
+
+Removed the following from robots.txt because Bing and Google were complaining:
+Content-Signal: search=yes
+Content-Signal: ai-train=yes
+Content-Signal: ai-input=yes
+
 ## Updating Guide
 - Update sitemap.txt version date
 - Update transformers.js (https://cdn.jsdelivr.net/npm/@huggingface/transformers@4/dist/transformers.min.js -> Save as wordfor/vendor/transformers.min.js)

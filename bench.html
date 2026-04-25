@@ -23,19 +23,19 @@
     td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono', Consolas, monospace; font-size: .85rem; }
     tr.best td { background: #ECFDF5; font-weight: 600; }
     .bar { height: 6px; border-radius: 3px; background: #E2E8F0; overflow: hidden; min-width: 80px; display: inline-block; width: 80px; vertical-align: middle; }
-    .bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #818CF8, #4F46E5); }
+    .bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #818CF8, #7C3AED); }
     .bar-fill.slow { background: linear-gradient(90deg, #FCA5A5, #EF4444); }
     .bar-fill.med { background: linear-gradient(90deg, #FCD34D, #F59E0B); }
     .running { color: #d97706; }
     .done { color: #16a34a; font-weight: 600; }
     .fail { color: #dc2626; }
     .skip { color: #94a3b8; }
-    button { padding: 10px 24px; background: #4F46E5; color: #fff; border: none; border-radius: 10px; font-size: .95rem; font-weight: 600; cursor: pointer; margin-right: 8px; }
+    button { padding: 10px 24px; background: #7C3AED; color: #fff; border: none; border-radius: 10px; font-size: .95rem; font-weight: 600; cursor: pointer; margin-right: 8px; }
     button:hover { background: #3730A3; }
     button:disabled { opacity: .5; cursor: not-allowed; }
     .btn-group { margin-bottom: 16px; }
     #log { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 10px; font-family: 'SF Mono', Consolas, monospace; font-size: .78rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; margin-top: 20px; }
-    a { color: #4F46E5; text-decoration: none; }
+    a { color: #7C3AED; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .info { font-size: .82rem; color: #94A3B8; margin-top: 4px; }
   </style>
@@ -59,7 +59,9 @@
       <tr><td>Full pure int2</td><td>Full</td><td class="num">0.5671</td><td class="num">31/67</td><td class="num">46/67</td><td>mdbr-leaf-mt, pure int2, 96 bytes/entry</td></tr>
       <tr><td>Full pure int3</td><td>Full</td><td class="num">0.6437</td><td class="num">37/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, pure int3, 144 bytes/entry</td></tr>
       <tr><td>Full pure int4</td><td>Full</td><td class="num">0.6088</td><td class="num">34/67</td><td class="num">51/67</td><td>mdbr-leaf-mt, pure int4, 192 bytes/entry</td></tr>
-      <tr><td>Full binary+int4 rerank</td><td>Full</td><td class="num">0.6090</td><td class="num">34/67</td><td class="num">51/67</td><td>mdbr-leaf-mt, binary+int4 rerank, 240 bytes/entry (desktop)</td></tr>
+      <tr><td>Full pure int8</td><td>Full</td><td class="num">0.6375</td><td class="num">36/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, pure int8, 384 bytes/entry</td></tr>
+      <tr><td>Full binary+int3 rerank</td><td>Full</td><td class="num">0.6438</td><td class="num">37/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, binary+int3 rerank, 192 bytes/entry (desktop)</td></tr>
+      <tr><td>Full binary+int4 rerank</td><td>Full</td><td class="num">0.6090</td><td class="num">34/67</td><td class="num">51/67</td><td>mdbr-leaf-mt, binary+int4 rerank, 240 bytes/entry</td></tr>
       <!-- EVAL_END -->
     </tbody>
   </table>
@@ -357,6 +359,42 @@ function scoreInt2(qvec, int2Data, rangeMin, rangeScale, dims, count, out) {
   }
 }
 
+function scoreBinaryRerankInt3(qvec, count, out) {
+  const hamming = new Float32Array(count);
+  scoreHamming(qvec, fullEmbBinary, BINARY_BYTES, count, hamming);
+  const indices = Array.from({length: count}, (_, i) => i);
+  indices.sort((a, b) => hamming[b] - hamming[a]);
+  const k = Math.min(RERANK_K, count);
+  const qScaled = new Float32Array(FULL_DIMS);
+  let qOffset = 0;
+  for (let d = 0; d < FULL_DIMS; d++) {
+    qScaled[d] = qvec[d] * int3RangeScale[d] / 7;
+    qOffset += qvec[d] * int3RangeMin[d];
+  }
+  const bytesPerEntry = (FULL_DIMS * 3) >> 3;
+  const nGroups = FULL_DIMS >> 3;
+  for (let i = 0; i < count; i++) out[i] = -Infinity;
+  for (let j = 0; j < k; j++) {
+    const idx = indices[j];
+    let dot = qOffset;
+    const base = idx * bytesPerEntry;
+    for (let g = 0; g < nGroups; g++) {
+      const b = base + g * 3;
+      const w = (fullEmbInt3[b] << 16) | (fullEmbInt3[b + 1] << 8) | fullEmbInt3[b + 2];
+      const d8 = g << 3;
+      dot += qScaled[d8]     * ((w >> 21) & 7);
+      dot += qScaled[d8 + 1] * ((w >> 18) & 7);
+      dot += qScaled[d8 + 2] * ((w >> 15) & 7);
+      dot += qScaled[d8 + 3] * ((w >> 12) & 7);
+      dot += qScaled[d8 + 4] * ((w >>  9) & 7);
+      dot += qScaled[d8 + 5] * ((w >>  6) & 7);
+      dot += qScaled[d8 + 6] * ((w >>  3) & 7);
+      dot += qScaled[d8 + 7] * ( w        & 7);
+    }
+    out[idx] = dot;
+  }
+}
+
 function scoreBinaryRerankInt4(qvec, count, out) {
   const hamming = new Float32Array(count);
   scoreHamming(qvec, fullEmbBinary, BINARY_BYTES, count, hamming);
@@ -540,6 +578,13 @@ window.runScoringBench = async function() {
     await new Promise(r => setTimeout(r, 10));
   }
 
+  // Binary + int3 rerank
+  if (fullEmbBinary && fullEmbInt3) {
+    log("  Benchmarking: Binary+int3 rerank...");
+    results.push(benchScoreMethod("Binary+int3 rerank", (q, out) => scoreBinaryRerankInt3(q, wordCount, out), FULL_DIMS));
+    await new Promise(r => setTimeout(r, 10));
+  }
+
   // Binary + int4 rerank
   if (fullEmbBinary && fullEmbInt4) {
     log("  Benchmarking: Binary+int4 rerank...");
@@ -560,6 +605,7 @@ window.runScoringBench = async function() {
     "Full int3 (384d)": fullEmbInt3 ? `${(fullEmbInt3.byteLength / 1e6).toFixed(0)} MB` : "N/A",
     "Full int4 (384d)": fullEmbInt4 ? `${(fullEmbInt4.byteLength / 1e6).toFixed(0)} MB` : "N/A",
     "Binary+int8 rerank": fullEmbBinary && fullEmbInt8 ? `${((fullEmbBinary.byteLength + fullEmbInt8.byteLength) / 1e6).toFixed(0)} MB` : "N/A",
+    "Binary+int3 rerank": fullEmbBinary && fullEmbInt3 ? `${((fullEmbBinary.byteLength + fullEmbInt3.byteLength) / 1e6).toFixed(0)} MB` : "N/A",
     "Binary+int4 rerank": fullEmbBinary && fullEmbInt4 ? `${((fullEmbBinary.byteLength + fullEmbInt4.byteLength) / 1e6).toFixed(0)} MB` : "N/A",
     "Potion int4 (256d)": `${(potionEmbInt4.byteLength / 1e6).toFixed(0)} MB`,
   };
@@ -598,7 +644,7 @@ const E2E_TESTS = [
   { id: "lite", name: "Lite (potion, pure JS)" },
   { id: "lite-wasm", name: "Lite (potion, WASM)" },
   { id: "full-wasm", name: "Full (q8, WASM)" },
-  { id: "full-binary-rerank", name: "Full (q8+binary+int4 rerank, WASM)" },
+  { id: "full-binary-rerank", name: "Full (q8+binary+int3 rerank, WASM)" },
   { id: "full-binary-only", name: "Full (q8+binary only, WASM)" },
   { id: "full-webgpu", name: "Full (q4f16, WebGPU)" },
 ];
@@ -767,8 +813,8 @@ window.runE2E = async function() {
         log(`  ${test.name}: skipped`);
         continue;
       }
-      if (isBinaryRerankTest && !fullEmbInt4) {
-        updateE2ERow(test.id, "skip", null, null, "Int4 data not loaded");
+      if (isBinaryRerankTest && !fullEmbInt3) {
+        updateE2ERow(test.id, "skip", null, null, "Int3 data not loaded");
         log(`  ${test.name}: skipped`);
         continue;
       }
@@ -787,14 +833,14 @@ window.runE2E = async function() {
         for (let i = 0; i < FULL_DIMS; i++) vec[i] /= norm;
         const out = new Float32Array(wordCount);
         if (isBinaryRerankTest) {
-          scoreBinaryRerankInt4(vec, wordCount, out);
+          scoreBinaryRerankInt3(vec, wordCount, out);
         } else {
           scoreHamming(vec, fullEmbBinary, BINARY_BYTES, wordCount, out);
         }
         times.push(performance.now() - t);
       }
       const avg = times.reduce((a, b) => a + b, 0) / times.length;
-      const notes = isBinaryRerankTest ? "binary+int4 rerank (model cached)"
+      const notes = isBinaryRerankTest ? "binary+int3 rerank (model cached)"
         : "pure binary ITQ (model cached, mobile path)";
       updateE2ERow(test.id, "done", 0, avg, notes);
       log(`  ${test.name}: avg=${avg.toFixed(1)}ms (model cached)`);

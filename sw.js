@@ -3,12 +3,13 @@
  * Enables offline support and "Add to Home Screen" (PWA).
  *
  * Strategy:
- *   - App shell (HTML, CSS, JS): stale-while-revalidate.
+ *   - App shell (HTML, CSS, JS, icons): stale-while-revalidate.
  *   - Data files & model files (.bin, .json, .txt, .onnx): cache-first (large, rarely change).
- *   - Cross-origin (CDN libs): NOT intercepted.
+ *   - Cross-origin model files (HuggingFace CDN): cache-first.
+ *   - Navigation: network-first with offline fallback to cached shell.
  */
 
-const CACHE_NAME = "wordfor-v14";
+const CACHE_NAME = "wordfor-v15";
 
 const APP_SHELL = [
   "/",
@@ -17,6 +18,8 @@ const APP_SHELL = [
   "/style.css",
   "/app.js",
   "/manifest.json",
+  "/icon-192.png",
+  "/icon-512.png",
 ];
 
 // Pre-cache app shell on install
@@ -41,16 +44,28 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch strategy: same-origin only
-
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  if (url.origin !== self.location.origin) return;
-  if (url.protocol !== "http:" && url.protocol !== "https:") return;
+  if (event.request.method !== "GET") return;
 
-  // Do NOT intercept navigation
-  if (event.request.mode === "navigate") return;
+  // Skip analytics
+  if (url.hostname.includes("goatcounter")) return;
+
+  // Navigation: network-first with offline fallback
+  if (event.request.mode === "navigate") {
+    event.respondWith(networkFirstNav(event.request));
+    return;
+  }
+
+  // Cross-origin model files (HuggingFace, CDN): cache-first
+  if (url.origin !== self.location.origin && isModelFile(url)) {
+    event.respondWith(cacheFirst(event.request));
+    return;
+  }
+
+  // Only handle same-origin from here
+  if (url.origin !== self.location.origin) return;
 
   if (isDataFile(url.pathname)) {
     event.respondWith(cacheFirst(event.request));
@@ -65,6 +80,7 @@ function isDataFile(pathname) {
     (pathname.endsWith(".bin") || pathname.endsWith(".json") || pathname.endsWith(".txt") || pathname.endsWith(".wasm") || pathname.endsWith(".safetensors"))) {
     return true;
   }
+  if (pathname.startsWith("/vendor/")) return true;
   if (pathname.startsWith("/models/") &&
     (pathname.endsWith(".onnx") || pathname.endsWith(".onnx_data") || pathname.endsWith(".json") || pathname.endsWith(".bin"))) {
     return true;
@@ -72,17 +88,40 @@ function isDataFile(pathname) {
   return false;
 }
 
+function isModelFile(url) {
+  const h = url.hostname;
+  return h.includes("huggingface.co") || h.includes("cdn.jsdelivr.net") || h.includes("unpkg.com");
+}
+
+async function networkFirstNav(request) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    // Fallback to cached index for SPA-like navigation
+    const index = await caches.match("/index.html");
+    if (index) return index;
+    return new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } });
+  }
+}
+
 async function cacheFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request);
+  const cached = await caches.match(request);
   if (cached) return cached;
   try {
     const response = await fetch(request);
     if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
     }
     return response;
-  } catch (err) {
+  } catch {
     return new Response("Service Unavailable", {
       status: 503,
       headers: { "Content-Type": "text/plain" },
@@ -94,19 +133,15 @@ async function staleWhileRevalidate(request) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
 
-  try {
-    const response = await fetch(request);
-    if (response && response.ok) {
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch (err) {
-    // 👉 GUARANTEE a Response
-    if (cached) return cached;
+  const fetchPromise = fetch(request)
+    .then((response) => {
+      if (response && response.ok) cache.put(request, response.clone());
+      return response;
+    })
+    .catch(() => null);
 
-    return new Response("Service Unavailable", {
-      status: 503,
-      headers: { "Content-Type": "text/plain" },
-    });
-  }
+  return cached || (await fetchPromise) || new Response("Service Unavailable", {
+    status: 503,
+    headers: { "Content-Type": "text/plain" },
+  });
 }
