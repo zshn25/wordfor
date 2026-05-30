@@ -1,0 +1,46 @@
+{
+  "name": "wordfor-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for WordFor: reverse dictionary / word-finder tools for AI agents. Privacy-first, public-domain sources only.",
+  "license": "CC-BY-NC-ND-4.0",
+  "author": "Zeeshan Khan Suri (zshn25)",
+  "homepage": "https://wordfor.xyz",
+  "repository": { "type": "git", "url": "https://github.com/zshn25/wordfor" },
+  "type": "module",
+  "bin": {
+    "wordfor-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "start:http": "node dist/index.js --http",
+    "dev": "tsc -p tsconfig.json --watch",
+    "smoke": "node test/smoke.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "reverse-dictionary",
+    "word-finder",
+    "thesaurus",
+    "vocabulary",
+    "tip-of-the-tongue",
+    "wordfor"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}
