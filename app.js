@@ -17,7 +17,7 @@
 // ---------------------------------------------------------------------------
 
 const DATA_ROOT = "data";
-const DATA_VERSION = "v2";  // Bump when data files change to bust browser/CDN cache
+const DATA_VERSION = "v3";  // Bump when data files change to bust browser/CDN cache
 const TOP_K = 30;
 const SHOW_K = 9;
 const DEBOUNCE = 400;
@@ -53,10 +53,32 @@ const RESULT_EXCLUDE = new Set([
 const FULL_MODEL_ID = "onnx-community/mdbr-leaf-mt-ONNX";
 const FULL_DIMS = 384;
 const LITE_DIMS = 256;
-
 let MODE = null;
 let DIMS = null;
 let fullReady = false;
+
+// ---------------------------------------------------------------------------
+// Lightweight performance instrumentation (TTI / search-ready / fetch / latency)
+// Marks are kept in-memory and can be dumped via window.wordforPerf() for the
+// perf_report.md measurements. No data leaves the browser.
+// ---------------------------------------------------------------------------
+
+const perf = {
+  t0: (typeof performance !== "undefined" ? performance.now() : Date.now()),
+  marks: {},
+  measures: {},
+  now() { return (typeof performance !== "undefined" ? performance.now() : Date.now()); },
+  mark(name) { this.marks[name] = this.now(); },
+  measure(name, fromMark) {
+    const end = this.now();
+    const start = this.marks[fromMark] != null ? this.marks[fromMark] : this.t0;
+    this.measures[name] = +(end - start).toFixed(1);
+    return this.measures[name];
+  },
+  sinceStart(name) { this.measures[name] = +(this.now() - this.t0).toFixed(1); return this.measures[name]; },
+  dump() { return { sinceStart_ms: +(this.now() - this.t0).toFixed(1), measures: this.measures }; },
+};
+if (typeof window !== "undefined") window.wordforPerf = () => perf.dump();
 
 // ---------------------------------------------------------------------------
 // Float-16 → Float-32 lookup table  (65 536 entries ≈ 256 KB)
@@ -351,10 +373,41 @@ async function fetchWithProgress(url, progressId) {
 
 async function loadWordList() {
   addProgressRow("words", "Word list (~18 MB)");
-  const res = await fetch(dataUrl("words.json"));
-  setProgress("words", 50);
-  wordEntries = await res.json();
+  perf.mark("words_start");
+  // Prefer cache-first sharded loader (assets/model-manifest.json); fall back to
+  // the monolithic data/words.json when no manifest is deployed.
+  let loadedViaShards = false;
+  try {
+    if (window.ShardLoader && (await window.ShardLoader.isSharded("words"))) {
+      wordEntries = await window.ShardLoader.loadJSON("words", {
+        onProgress: (pct) => setProgress("words", pct),
+      });
+      loadedViaShards = true;
+    }
+  } catch (e) {
+    console.warn("shard load of words.json failed, falling back to monolith:", e.message);
+  }
+  if (!loadedViaShards) {
+    const res = await fetch(dataUrl("words.json"));
+    setProgress("words", 50);
+    wordEntries = await res.json();
+  }
   setProgress("words", 100);
+  perf.measure("words_loaded", "words_start");
+  // Lemma family map (built at compile time; replaces runtime stemming).
+  // Non-fatal: search still works without it, just without inflectional grouping.
+  try {
+    let obj = null;
+    if (window.ShardLoader && (await window.ShardLoader.isSharded("forms_to_lemma"))) {
+      obj = await window.ShardLoader.loadJSON("forms_to_lemma");
+    } else {
+      const lemRes = await fetch(dataUrl("forms_to_lemma.json"));
+      if (lemRes.ok) obj = await lemRes.json();
+    }
+    if (obj) formsToLemma = new Map(Object.entries(obj));
+  } catch (e) {
+    console.warn("forms_to_lemma.json not loaded:", e.message);
+  }
 }
 
 async function loadPotionData() {
@@ -496,20 +549,30 @@ async function loadFullRerank() {
 
   // Try int3 first (best MRR)
   try {
-    const [int3Buf, int3RangesBuf] = await Promise.all([
-      fetch(dataUrl("embeddings_int3.bin")).then(r => {
-        if (!r.ok) throw new Error("int3 not found");
-        return r.arrayBuffer();
-      }),
-      fetch(dataUrl("embeddings_int3_ranges.bin")).then(r => {
-        if (!r.ok) throw new Error("int3 ranges not found");
-        return r.arrayBuffer();
-      }),
-    ]);
+    let int3Buf, int3RangesBuf;
+    if (window.ShardLoader && (await window.ShardLoader.isSharded("embeddings_int3"))) {
+      // Cache-first sharded fetch (background priority) -> upgrades ranking silently
+      [int3Buf, int3RangesBuf] = await Promise.all([
+        window.ShardLoader.loadAsset("embeddings_int3"),
+        window.ShardLoader.loadAsset("embeddings_int3_ranges"),
+      ]);
+    } else {
+      [int3Buf, int3RangesBuf] = await Promise.all([
+        fetch(dataUrl("embeddings_int3.bin")).then(r => {
+          if (!r.ok) throw new Error("int3 not found");
+          return r.arrayBuffer();
+        }),
+        fetch(dataUrl("embeddings_int3_ranges.bin")).then(r => {
+          if (!r.ok) throw new Error("int3 ranges not found");
+          return r.arrayBuffer();
+        }),
+      ]);
+    }
     fullEmbInt3 = new Uint8Array(int3Buf);
     const rd3 = new Float32Array(int3RangesBuf);
     fullRangeMin = rd3.subarray(0, FULL_DIMS);
     fullRangeScale = rd3.subarray(FULL_DIMS, FULL_DIMS * 2);
+    perf.sinceStart("search_ready_best_ms");
     console.log("Loaded int3 reranking embeddings");
     return;
   } catch (e) {
@@ -573,6 +636,7 @@ async function init() {
   // Show app
   $loader.classList.add("done");
   $app.classList.remove("hidden");
+  perf.sinceStart("search_ready_fast_ms");
   $input.focus();
   startShowcase();
   showModeBadge();
@@ -944,27 +1008,19 @@ function applyQualityWeights(scored, count) {
 }
 
 /**
- * Simple suffix-stripping stemmer for grouping morphological variants.
- * Returns a stem if the word is long enough (5+ chars after stripping),
- * or null if the word is too short to safely stem.
+ * Canonical lemma lookup, sourced from the build-time forms_to_lemma.json map.
+ * Replaces the old runtime suffix-stripping stemmer with evidence-based,
+ * license-audited inflectional collapse (e.g. ran/running/runs -> run,
+ * mice -> mouse). Negative/derivational prefixes are NEVER collapsed here
+ * (unhappy stays unhappy); that policy lives in build_lemma_families.py.
+ * Returns the canonical lemma for a word, or the word itself if none.
  */
-function stemWord(word) {
-  const w = word.toLowerCase().replace(/[^a-z]/g, "");
-  if (w.length < 7) return null;
-  // Strip common suffixes (longest first to avoid partial matches)
-  const suffixes = [
-    "ational", "ionally", "ically", "ation", "ition",
-    "ness", "ment", "ible", "able",
-    "ical", "ious", "eous",
-    "ist", "ism", "ous", "ive", "ful", "ing", "ant", "ent", "ial", "ion",
-    "ic", "al", "ly", "er", "ed", "ia",
-  ];
-  for (const suf of suffixes) {
-    if (w.endsWith(suf) && w.length - suf.length >= 5) {
-      return w.slice(0, w.length - suf.length);
-    }
-  }
-  return null;
+let formsToLemma = new Map();
+
+function canonicalLemma(word) {
+  const w = word.toLowerCase().replace(/[^a-z'\-]/g, "");
+  if (w.length < 2) return w;
+  return formsToLemma.get(w) || w;
 }
 
 function topK(scored, count) {
@@ -986,7 +1042,7 @@ function topK(scored, count) {
   const groups = new Map();   // primary word -> { ...entry, defs: [{d, p, score}], score }
   const order = [];           // insertion-order keys
   const wordToGroup = new Map();  // any word -> group key (for cross-variant merging)
-  const stemToGroup = new Map();  // stem -> group key (for morphological merging)
+  const lemmaToGroup = new Map(); // canonical lemma -> group key (inflectional merging)
   for (const item of combined) {
     const entry = item.entry;
     const itemScore = item.score;
@@ -997,10 +1053,10 @@ function topK(scored, count) {
         if (wordToGroup.has(w.toLowerCase())) { found = true; break; }
       }
       if (!found) {
-        // Check stem-based grouping too
+        // Check canonical-lemma grouping too
         for (const w of entry.w) {
-          const s = stemWord(w);
-          if (s && stemToGroup.has(s)) { found = true; break; }
+          const s = canonicalLemma(w);
+          if (s && lemmaToGroup.has(s)) { found = true; break; }
         }
       }
       if (!found) break;
@@ -1013,12 +1069,12 @@ function topK(scored, count) {
         break;
       }
     }
-    // If no exact match, try stem-based grouping (bibliophilic -> bibliophilist)
+    // If no exact match, try canonical-lemma grouping (running -> run, mice -> mouse)
     if (!groupKey) {
       for (const w of entry.w) {
-        const s = stemWord(w);
-        if (s && stemToGroup.has(s)) {
-          groupKey = stemToGroup.get(s);
+        const s = canonicalLemma(w);
+        if (s && lemmaToGroup.has(s)) {
+          groupKey = lemmaToGroup.get(s);
           break;
         }
       }
@@ -1031,8 +1087,8 @@ function topK(scored, count) {
       for (const w of entry.w) {
         if (!g.w.includes(w)) g.w.push(w);
         wordToGroup.set(w.toLowerCase(), groupKey);
-        const s = stemWord(w);
-        if (s) stemToGroup.set(s, groupKey);
+        const s = canonicalLemma(w);
+        if (s) lemmaToGroup.set(s, groupKey);
       }
       if (entry.s) for (const syn of entry.s) {
         if (!g.s.includes(syn)) g.s.push(syn);
@@ -1047,8 +1103,8 @@ function topK(scored, count) {
       order.push(primary);
       for (const w of entry.w) {
         wordToGroup.set(w.toLowerCase(), primary);
-        const s = stemWord(w);
-        if (s) stemToGroup.set(s, primary);
+        const s = canonicalLemma(w);
+        if (s) lemmaToGroup.set(s, primary);
       }
     }
   }
@@ -1058,6 +1114,14 @@ function topK(scored, count) {
 // ---------------------------------------------------------------------------
 // Render
 // ---------------------------------------------------------------------------
+
+function escAttr(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
 
 function render(items, query) {
   if (items.length === 0) {
@@ -1096,6 +1160,14 @@ function render(items, query) {
         <div class="card-head">
           <span class="card-word">${esc(primary)}</span>
           ${it.defs.length === 1 ? `<span class="card-pos" data-pos="${esc(it.defs[0].p)}">${esc(it.defs[0].p)}</span>` : ""}
+          <button
+            class="card-copy"
+            type="button"
+            data-copy-word="${escAttr(primary)}"
+            aria-label="Copy ${escAttr(primary)}"
+          >
+            Copy
+          </button>
         </div>
         ${altHtml}
         <div class="card-defs-wrap">${it.defs.length === 1 ? `<p class="card-def">${esc(it.defs[0].d)}</p>` : defsHtml}</div>
@@ -1127,6 +1199,34 @@ function render(items, query) {
     if (el.scrollHeight > el.clientHeight + 2) el.classList.add("truncated");
   });
 }
+
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-copy-word]");
+  if (!button) return;
+
+  const word = button.dataset.copyWord;
+  if (!word) return;
+
+  try {
+    await navigator.clipboard.writeText(word);
+
+    const oldText = button.textContent;
+    button.textContent = "Copied";
+    button.classList.add("copied");
+
+    setTimeout(() => {
+      button.textContent = oldText;
+      button.classList.remove("copied");
+    }, 1200);
+  } catch {
+    const oldText = button.textContent;
+    button.textContent = "Failed";
+
+    setTimeout(() => {
+      button.textContent = oldText;
+    }, 1200);
+  }
+});
 
 function esc(s) {
   const d = document.createElement("div");
@@ -1293,3 +1393,22 @@ init().catch(err => {
   $loaderNote.textContent = `Error: ${err.message}. Please refresh the page.`;
   $loaderNote.style.color = "#DC2626";
 });
+
+const privacyBanner = document.getElementById("privacy-banner");
+const privacyAccept = document.getElementById("privacy-banner-accept");
+const privacyClose = document.getElementById("privacy-banner-close");
+
+const PRIVACY_KEY = "wordfor_privacy_notice_dismissed";
+
+if (privacyBanner && localStorage.getItem(PRIVACY_KEY) !== "1") {
+  privacyBanner.hidden = false;
+}
+
+function dismissPrivacyBanner() {
+  if (!privacyBanner) return;
+  privacyBanner.hidden = true;
+  localStorage.setItem(PRIVACY_KEY, "1");
+}
+
+privacyAccept?.addEventListener("click", dismissPrivacyBanner);
+privacyClose?.addEventListener("click", dismissPrivacyBanner);

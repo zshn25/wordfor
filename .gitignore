@@ -18,3 +18,93 @@ build/*.zip
 build/*
 data/embeddings.bin
 data/embeddings_int8.bin
+
+# --------------------------------------------------------------------
+# Wordfor native/core generated artifacts
+# --------------------------------------------------------------------
+
+# Rust / Cargo build output
+/target/
+**/target/
+
+# Specifically for the native core workspace shown in D:\projects\word_for\wordfor\core
+/core/target/
+
+# Rust incremental/fingerprint/dependency artifacts
+**/.fingerprint/
+**/incremental/
+**/debug/deps/
+**/release/deps/
+
+# Native binaries generated during local builds
+*.exe
+*.dll
+*.dylib
+*.so
+*.a
+*.lib
+*.pdb
+*.rlib
+*.rmeta
+
+# Cargo temporary files
+*.d
+
+# --------------------------------------------------------------------
+# Android generated artifacts
+# --------------------------------------------------------------------
+**/.gradle/
+**/build/
+local.properties
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# --------------------------------------------------------------------
+# iOS / Xcode generated artifacts
+# --------------------------------------------------------------------
+DerivedData/
+*.xcuserstate
+*.xcuserdata/
+*.moved-aside
+*.ipa
+*.dSYM/
+*.dSYM.zip
+
+# Swift Package Manager / Xcode build output
+.build/
+.swiftpm/
+Package.resolved
+
+# CocoaPods - ignore only if you do NOT intentionally vendor Pods
+Pods/
+
+# --------------------------------------------------------------------
+# Tauri / frontend generated artifacts
+# --------------------------------------------------------------------
+node_modules/
+dist/
+.vite/
+
+# Tauri generated output
+src-tauri/target/
+**/src-tauri/target/
+
+# --------------------------------------------------------------------
+# OS / editor noise
+# --------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+# Unused int4 rerank embeddings (105 MB, not loaded by app.js; exceeds GitHub 100 MiB limit)
+data/embeddings_int4.bin
+
+# Local sharding artifacts (monoliths <100MB are still served directly; shards are
+# a regenerable GitHub-friendly fallback produced by build/split_assets.py)
+data/shards/
+assets/model-manifest.json
