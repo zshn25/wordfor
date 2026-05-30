@@ -1,0 +1,118 @@
+name: build-desktop
+
+# Builds the WordFor Tauri desktop app on every platform and runs the asset size guard.
+# Artifacts are uploaded per-platform. Signing/notarization is left to a separate signed
+# release workflow (see platform_verification.md) and requires secrets not stored here.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "core/**"
+      - ".github/workflows/build-desktop.yml"
+      - "data/**"
+
+jobs:
+  asset-size-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Fails the build if any tracked file exceeds GitHub's 100 MiB hard limit,
+      # or if a sharded asset exceeds 25 MiB. Inlined here because build/ is
+      # gitignored and not present in the checkout.
+      - name: Check tracked asset sizes
+        shell: bash
+        run: |
+          python - <<'PY'
+          import subprocess, sys
+          HARD = 100 * 1024 * 1024   # GitHub hard reject
+          SHARD = 25 * 1024 * 1024   # per-shard advisory limit
+          files = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+          blockers = []
+          for f in files:
+              try:
+                  import os
+                  n = os.path.getsize(f)
+              except OSError:
+                  continue
+              if n >= HARD:
+                  blockers.append((f, n, ">=100 MiB (GitHub hard limit)"))
+              elif "/shards/" in f and n > SHARD:
+                  blockers.append((f, n, ">25 MiB shard"))
+          if blockers:
+              for f, n, why in blockers:
+                  print(f"BLOCK {n/1048576:.1f} MiB  {f}  ({why})")
+              sys.exit(1)
+          print("ASSET SIZE GUARD: PASS (no tracked file >=100 MiB; no oversized shards)")
+          PY
+
+  build:
+    name: ${{ matrix.label }}
+    needs: asset-size-guard
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13          # Intel x64
+            target: x86_64-apple-darwin
+            label: macOS-x64
+          - os: macos-14          # Apple Silicon (ARM64)
+            target: aarch64-apple-darwin
+            label: macOS-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: Windows-x64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: Linux-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            core/target
+          key: ${{ matrix.label }}-cargo-${{ hashFiles('core/**/Cargo.lock', 'core/**/Cargo.toml') }}
+
+      # Linux needs the WebKitGTK + libsoup deps for Tauri.
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf libsoup-3.0-dev
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build desktop bundle
+        working-directory: core/wordfor-tauri
+        run: cargo tauri build --target ${{ matrix.target }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordfor-${{ matrix.label }}
+          if-no-files-found: warn
+          path: |
+            core/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            core/target/${{ matrix.target }}/release/bundle/**/*.app
+            core/target/${{ matrix.target }}/release/bundle/**/*.msi
+            core/target/${{ matrix.target }}/release/bundle/**/*-setup.exe
+            core/target/${{ matrix.target }}/release/bundle/**/*.deb
+            core/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            core/target/${{ matrix.target }}/release/bundle/**/*.rpm
