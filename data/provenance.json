@@ -1,26 +1,26 @@
 {
-  "build_date": "2026-04-23T12:44:23",
-  "total_entries": 545974,
+  "build_date": "2026-05-30T00:04:00",
+  "total_entries": 576405,
   "sources": {
     "oewn": {
       "name": "Open English WordNet 2025+",
       "license": "CC-BY-4.0",
       "url": "https://github.com/globalwordnet/english-wordnet/releases/download/2025-edition/english-wordnet-2025-plus-json.zip",
-      "entries": 110359,
+      "entries": 110283,
       "redistributed": true
     },
     "webster": {
       "name": "Webster's Unabridged Dictionary (1913)",
       "license": "Public Domain",
       "url": "https://raw.githubusercontent.com/adambom/dictionary/master/dictionary.json",
-      "entries": 61930,
+      "entries": 61419,
       "redistributed": true
     },
     "gcide": {
       "name": "GCIDE (Webster 1913 public domain portion)",
       "license": "Public Domain (Webster 1913 content only)",
       "url": "https://gcide.gnu.org.ua/",
-      "entries": 39784,
+      "entries": 39564,
       "note": "Only entries sourced from '1913 Webster' are used",
       "redistributed": true
     },
@@ -28,7 +28,15 @@
       "name": "Century Dictionary (1889-1911)",
       "license": "Public Domain",
       "url": "https://github.com/hupong/century-dictionary",
-      "entries": 138080,
+      "entries": 137351,
+      "redistributed": true
+    },
+    "chambers1908": {
+      "name": "Chambers's Twentieth Century Dictionary (1908)",
+      "license": "Public Domain (USA / Project Gutenberg)",
+      "url": "https://www.gutenberg.org/ebooks/37683",
+      "entries": 29953,
+      "note": "Definitions redistributed; etymology used build-time only.",
       "redistributed": true
     },
     "moby": {

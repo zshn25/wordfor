@@ -1,0 +1,150 @@
+{
+  "bit_index": {
+    "century": 0,
+    "chambers1908": 1,
+    "cmudict": 2,
+    "conceptnet": 3,
+    "edd": 4,
+    "gcide_full": 5,
+    "gcide_pd_webster": 6,
+    "llm_augmented": 7,
+    "moby_extra": 8,
+    "moby_thesaurus": 9,
+    "oed1_fascicles": 10,
+    "oewn": 11,
+    "open_rogets": 12,
+    "opted": 13,
+    "roget1911_pg": 14,
+    "vulgar_tongue_1811": 15,
+    "webster1913": 16,
+    "wiktionary": 17
+  },
+  "sources": {
+    "oewn": {
+      "name": "Open English WordNet 2025+",
+      "license": "CC BY 4.0",
+      "redistribute_text": true,
+      "default_visible": true,
+      "attribution_required": true
+    },
+    "webster1913": {
+      "name": "Webster's Revised Unabridged Dictionary",
+      "license": "Public domain in USA / Project Gutenberg",
+      "redistribute_text": true,
+      "default_visible": true,
+      "attribution_required": true
+    },
+    "opted": {
+      "name": "The Online Plain Text English Dictionary",
+      "license": "Public domain, based on Webster 1913",
+      "redistribute_text": true,
+      "default_visible": true,
+      "attribution_required": true
+    },
+    "gcide_pd_webster": {
+      "name": "GCIDE public-domain Webster-derived subset",
+      "license": "Public domain subset extracted from Webster 1913 lineage",
+      "redistribute_text": true,
+      "default_visible": true,
+      "attribution_required": true
+    },
+    "century": {
+      "name": "Century Dictionary",
+      "license": "Public domain in USA",
+      "redistribute_text": true,
+      "default_visible": true,
+      "attribution_required": true
+    },
+    "chambers1908": {
+      "name": "Chambers's Twentieth Century Dictionary",
+      "license": "Public domain in USA / Project Gutenberg/Wikisource",
+      "redistribute_text": true,
+      "default_visible": true,
+      "attribution_required": true
+    },
+    "llm_augmented": {
+      "name": "WordFor curated LLM-augmented definitions",
+      "license": "CC0",
+      "redistribute_text": true,
+      "default_visible": true,
+      "attribution_required": false
+    },
+    "edd": {
+      "name": "English Dialect Dictionary / EDD Online",
+      "license": "CC BY 4.0 for EDD Online; original scans require verification",
+      "redistribute_text": true,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "vulgar_tongue_1811": {
+      "name": "1811 Dictionary of the Vulgar Tongue",
+      "license": "Public domain in USA / Project Gutenberg",
+      "redistribute_text": true,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "moby_thesaurus": {
+      "name": "Moby Thesaurus II",
+      "license": "Public domain by author grant",
+      "redistribute_text": true,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "moby_extra": {
+      "name": "Moby Project extra lexical resources",
+      "license": "Public domain by author grant",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "cmudict": {
+      "name": "CMU Pronouncing Dictionary",
+      "license": "BSD-2-Clause-like (CMU)",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "roget1911_pg": {
+      "name": "Roget's Thesaurus 1911",
+      "license": "Public domain in USA / Project Gutenberg",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "gcide_full": {
+      "name": "GNU Collaborative International Dictionary of English (full)",
+      "license": "GPL-3.0-or-later",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "open_rogets": {
+      "name": "Open Roget's",
+      "license": "CC BY-SA 4.0",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "wiktionary": {
+      "name": "Wiktionary via kaikki.org",
+      "license": "CC BY-SA 3.0",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "conceptnet": {
+      "name": "ConceptNet 5.7",
+      "license": "CC BY-SA 4.0",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "oed1_fascicles": {
+      "name": "OED1 / New English Dictionary fascicles",
+      "license": "Per-fascicle verification required",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    }
+  }
+}

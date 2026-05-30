@@ -1,0 +1,173 @@
+{
+  "generated": "2026-05-30T09:28:09+00:00",
+  "sources": {
+    "oewn": {
+      "name": "Open English WordNet 2025+",
+      "license": "CC BY 4.0",
+      "source_url": "https://github.com/globalwordnet/english-wordnet",
+      "source_class": "CORE_VISIBLE_OK",
+      "verification_status": "verified",
+      "files": [
+        {
+          "path": "oewn2025plus.zip",
+          "status": "present",
+          "sha256": "8832b8fa26a14c0ba8c99bb1ef8db6f9e122a6d9193b65ca9e0ef572580fee7e",
+          "bytes": 11298794
+        }
+      ]
+    },
+    "webster1913": {
+      "name": "Webster's Revised Unabridged Dictionary",
+      "license": "Public domain in USA / Project Gutenberg",
+      "source_url": "https://raw.githubusercontent.com/adambom/dictionary/master/dictionary.json",
+      "source_class": "",
+      "verification_status": "unverified",
+      "files": [
+        {
+          "path": "webster1913.json",
+          "status": "present",
+          "sha256": "418eaa909665854b353051b17f65faa26cde674e6af48cc066ea2a43e7ad66d5",
+          "bytes": 8959893
+        }
+      ]
+    },
+    "gcide_pd_webster": {
+      "name": "GCIDE public-domain Webster-derived subset",
+      "license": "Public domain subset extracted from Webster 1913 lineage",
+      "source_url": "https://gcide.gnu.org.ua/",
+      "source_class": "",
+      "verification_status": "unverified",
+      "files": [
+        {
+          "path": "gcide_webster.json",
+          "status": "present",
+          "sha256": "8a8682254275c68fe6bdd8ad62b9bbe4103e636d9600a8b836af183596e7defe",
+          "bytes": 5706731
+        },
+        {
+          "path": "gcide-0.54.tar.gz",
+          "status": "present",
+          "sha256": "ae9b0187a1d1e7ee86218c707503b5082894c0ba61eeee26d226bca169e7fbd0",
+          "bytes": 18876227
+        }
+      ]
+    },
+    "century": {
+      "name": "Century Dictionary",
+      "license": "Public domain in USA",
+      "source_url": "https://github.com/hupong/century-dictionary",
+      "source_class": "",
+      "verification_status": "unverified",
+      "files": [
+        {
+          "path": "century_dict.json",
+          "status": "present",
+          "sha256": "db12a9dce2600a1a91af186620429ba676d85e4b0eb58c63860b1e1271d67394",
+          "bytes": 19352071
+        }
+      ]
+    },
+    "chambers1908": {
+      "name": "Chambers's Twentieth Century Dictionary",
+      "license": "Public domain in USA / Project Gutenberg/Wikisource",
+      "source_url": "https://www.gutenberg.org/files/37683/37683-h/37683-h.htm",
+      "source_class": "",
+      "verification_status": "unverified",
+      "files": [
+        {
+          "path": "chambers1908.json",
+          "status": "present",
+          "sha256": "f3ef71403d8605934ba538158df6bd33eea4a4d14b37e215d576cdc82f15b504",
+          "bytes": 7251559
+        },
+        {
+          "path": "chambers1908_37683.html",
+          "status": "present",
+          "sha256": "555d2991c0d7cc611a61c79935db172efe6bb5becb074253788d90dafd0b6b08",
+          "bytes": 3407997
+        }
+      ]
+    },
+    "moby_thesaurus": {
+      "name": "Moby Thesaurus II",
+      "license": "Public domain by author grant",
+      "source_url": "https://raw.githubusercontent.com/words/moby/master/words.txt",
+      "source_class": "",
+      "verification_status": "unverified",
+      "files": [
+        {
+          "path": "moby_words.txt",
+          "status": "present",
+          "sha256": "63fcdcec2efe34414825945c7837f4381c7df7344ae34fdf1e8368eda19d59f3",
+          "bytes": 24853030
+        }
+      ]
+    },
+    "moby_extra": {
+      "name": "Moby Project extra lexical resources",
+      "license": "Public domain by author grant",
+      "source_url": "https://github.com/elitejake/Moby-Project",
+      "source_class": "",
+      "verification_status": "unverified",
+      "files": [
+        {
+          "path": "moby_common.txt",
+          "status": "present",
+          "sha256": "c7aa03c522e9e28bba1db692372119f21c73c646671af24b53a840e2d6f84fa7",
+          "bytes": 730682
+        },
+        {
+          "path": "mobyposi.i",
+          "status": "present",
+          "sha256": "daa369396e90e16ed8eb89b9e70e6b83939d021a7bd58077c82d3be7fe1a2d14",
+          "bytes": 3004202
+        }
+      ]
+    },
+    "llm_augmented": {
+      "name": "WordFor curated LLM-augmented definitions",
+      "license": "CC0",
+      "source_url": "llm_augmented.json",
+      "source_class": "",
+      "verification_status": "unverified",
+      "files": [
+        {
+          "path": "llm_augmented.json",
+          "status": "present",
+          "sha256": "f8019b21b504fc337c1f23612959f1a42c80b128895fb7e52f1e228972747245",
+          "bytes": 25600
+        }
+      ]
+    },
+    "wiktionary": {
+      "name": "Wiktionary via kaikki.org",
+      "license": "CC BY-SA 3.0",
+      "source_url": "https://kaikki.org/dictionary/English/",
+      "source_class": "",
+      "verification_status": "unverified",
+      "files": [
+        {
+          "path": "kaikki-english.jsonl.gz",
+          "status": "present",
+          "sha256": "62e8ead50af6113f0395fdb1d25af16dd8c98833ea0569e8c201eef36cd7c5ff",
+          "bytes": 457224226
+        }
+      ]
+    },
+    "conceptnet": {
+      "name": "ConceptNet 5.7",
+      "license": "CC BY-SA 4.0",
+      "source_url": "https://s3.amazonaws.com/conceptnet/downloads/2019/edges/conceptnet-assertions-5.7.0.csv.gz",
+      "source_class": "",
+      "verification_status": "unverified",
+      "files": [
+        {
+          "path": "conceptnet-assertions-5.7.0.csv.gz",
+          "status": "present",
+          "sha256": "accd65fe94038584295574ddc26e1500c1919c8c4532bf771811cafd0948af7e",
+          "bytes": 497963447
+        }
+      ]
+    }
+  }
+}
