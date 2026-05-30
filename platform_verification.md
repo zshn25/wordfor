@@ -21,6 +21,16 @@ The workflow triggers on `workflow_dispatch`, `push` of a `v*` tag, and `pull_re
 touching `core/**`. It **cannot run until it is on the remote default branch**; pushing the
 planned `v*` tag (see commit plan) triggers the full matrix.
 
+> **Status (2026-05-30):** main and tag `v0.1.0` were pushed to `gh`
+> (github.com/zshn25/wordfor). However, `.github/workflows/build-desktop.yml` was
+> **NOT pushed** because the active credential lacks the `workflow` OAuth scope
+> (`refusing to allow a Personal Access Token to ... workflow ... without 'workflow' scope`).
+> The workflow file exists locally only. The desktop CI matrix therefore has **not been
+> triggered** by the `v0.1.0` tag. To enable it: add the file with a `workflow`-scoped
+> token/credential (e.g. `gh auth refresh -s workflow` or a fine-grained PAT with the
+> Workflows permission), commit `.github/workflows/build-desktop.yml`, and push. Until then
+> all CI rows below remain PENDING / NOT RUN.
+
 ## Per-target actual status
 
 ### macOS x64 (`macos-13`, `x86_64-apple-darwin`)
