@@ -1,0 +1,133 @@
+<!-- © 2025 Zeeshan Khan Suri (zshn25). Licensed under CC-BY-NC-ND-4.0. -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How We Use Public-Domain Dictionaries Without Copying Restricted Data | WordFor</title>
+  <meta name="description"
+    content="WordFor's source policy: a clean public-domain core, build-time-only signals, and optional packs. How we avoid copying GPL, CC-BY-SA, or proprietary dictionary text.">
+  <link rel="canonical" href="https://wordfor.xyz/blog/public-domain-dictionaries-without-copying-restricted-data.html">
+
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="How we use public-domain dictionaries without copying restricted data">
+  <meta property="og:description" content="The source policy behind WordFor.">
+  <meta property="og:url" content="https://wordfor.xyz/blog/public-domain-dictionaries-without-copying-restricted-data.html">
+  <meta name="twitter:card" content="summary">
+
+  <link rel="icon" href="/favicon.ico" sizes="16x16" type="image/x-icon">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Article",
+        "headline": "How we use public-domain dictionaries without copying restricted data",
+        "description": "WordFor's source policy: clean public-domain core, build-time signals, optional packs.",
+        "author": { "@id": "https://wordfor.xyz/#zshn25" },
+        "publisher": { "@id": "https://wordfor.xyz/#zshn25" },
+        "datePublished": "2026-05-30",
+        "mainEntityOfPage": "https://wordfor.xyz/blog/public-domain-dictionaries-without-copying-restricted-data.html",
+        "isPartOf": { "@id": "https://wordfor.xyz/blog/#blog" }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://wordfor.xyz/" },
+          { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://wordfor.xyz/blog/" },
+          { "@type": "ListItem", "position": 3, "name": "Public-domain dictionaries without copying restricted data" }
+        ]
+      }
+    ]
+  }
+  </script>
+
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/blog/blog.css">
+</head>
+
+<body class="about-body">
+  <header class="header">
+    <div class="container header-row">
+      <a href="/" class="brand" aria-label="WordFor Home">
+        <span class="brand-icon">W</span><span class="brand-name">WordFor</span>
+      </a>
+      <nav class="nav-links">
+        <a href="/about.html">About</a>
+        <a href="/blog/">Blog</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="article-wrap">
+    <nav class="breadcrumbs"><a href="/">Home</a> &rsaquo; <a href="/blog/">Blog</a> &rsaquo; Public-domain dictionaries</nav>
+
+    <h1>How we use public-domain dictionaries without copying restricted data</h1>
+    <p class="article-meta">The source policy behind WordFor</p>
+
+    <p>WordFor's results come from real dictionaries. But "real dictionaries" includes a messy
+      mix of licenses &mdash; some truly public domain, some copyleft, some proprietary. To keep
+      the visible product clean and redistributable, WordFor sorts every source into three lanes
+      and is strict about which lane is allowed to put <em>text</em> in front of you.</p>
+
+    <h2>Lane 1: the clean public-domain core (visible)</h2>
+    <p>The words and definitions you actually see come only from sources that are public domain
+      or openly licensed for redistribution:</p>
+    <ul class="steps">
+      <li><strong>Open English WordNet</strong> (CC BY 4.0) &mdash; modern senses and synonyms.</li>
+      <li><strong>Webster's 1913</strong> (public domain) &mdash; the classic unabridged base.</li>
+      <li><strong>Century Dictionary</strong> (public domain) &mdash; broad historical coverage.</li>
+      <li><strong>Chambers's Twentieth Century Dictionary, 1908</strong> (public domain).</li>
+      <li>The <strong>public-domain Webster-derived subset of GCIDE</strong> &mdash; only the
+        1913-Webster lineage, never GPL additions.</li>
+      <li>A small set of <strong>CC0</strong> definitions for modern words missing from the old
+        dictionaries.</li>
+    </ul>
+    <p>Each visible entry carries a source label, and an automated audit fails the build if any
+      restricted text ever lands in this lane.</p>
+
+    <h2>Lane 2: build-time-only signals (never shown)</h2>
+    <p>Some excellent resources are copyleft (CC-BY-SA) or otherwise unsuitable for
+      redistribution. WordFor still <em>learns</em> from them at build time &mdash; for ranking
+      and quality scoring &mdash; but never copies their text into the product:</p>
+    <ul class="steps">
+      <li><strong>Wiktionary</strong> and <strong>ConceptNet</strong> (CC-BY-SA) &mdash; used only
+        as cross-validation and centrality signals; their definitions are <em>not</em>
+        redistributed.</li>
+      <li><strong>Moby Thesaurus</strong> &mdash; enriches synonym suggestions.</li>
+      <li>Pronunciation and frequency lists &mdash; used to weight, not to display.</li>
+    </ul>
+    <p>The distinction is deliberate: a ranking signal derived at build time is not the same as
+      shipping someone else's copyrighted text.</p>
+
+    <h2>Lane 3: optional / research-only packs (blocked from core)</h2>
+    <p>Sources that are GPL (the full GCIDE), proprietary, edition-unverified, or jurisdiction-
+      sensitive are kept out of the visible core entirely. Examples: the full GPL GCIDE,
+      aggregator sites, and historical works whose specific scan/edition we haven't verified as
+      public domain. Some may later ship as clearly-labelled optional packs, but never silently
+      in the core.</p>
+
+    <h2>Why this matters</h2>
+    <ul class="steps">
+      <li><strong>You can trust the labels.</strong> Every visible word can be traced to a
+        license-clean source.</li>
+      <li><strong>The product is redistributable.</strong> No copyleft or proprietary text rides
+        along.</li>
+      <li><strong>Quality without compromise.</strong> Restricted resources still improve
+        ranking as build-time signals, so you get good results without ingesting their text.</li>
+    </ul>
+
+    <p>For how those sources turn into a ranked list, see
+      <a href="/blog/how-wordfor-ranks-candidate-words.html">how WordFor ranks candidate words</a>.</p>
+
+    <p class="related"><strong>Related:</strong> public domain dictionary, WordNet, Webster 1913,
+      Century Dictionary, reverse dictionary, open data, licensing, semantic search.</p>
+
+    <div class="post-nav">
+      <a href="/">&larr; Open WordFor</a>
+    </div>
+  </main>
+</body>
+</html>

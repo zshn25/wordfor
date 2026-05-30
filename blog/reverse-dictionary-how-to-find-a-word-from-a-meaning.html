@@ -1,0 +1,139 @@
+<!-- © 2025 Zeeshan Khan Suri (zshn25). Licensed under CC-BY-NC-ND-4.0. -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reverse Dictionary: How to Find a Word From a Meaning | WordFor</title>
+  <meta name="description"
+    content="A reverse dictionary lets you find a word from its meaning. Here's how to describe a concept and get the exact word, with example searches you can try.">
+  <link rel="canonical" href="https://wordfor.xyz/blog/reverse-dictionary-how-to-find-a-word-from-a-meaning.html">
+
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Reverse dictionary: how to find a word from a meaning">
+  <meta property="og:description" content="Describe the meaning, get the word. A practical walkthrough.">
+  <meta property="og:url" content="https://wordfor.xyz/blog/reverse-dictionary-how-to-find-a-word-from-a-meaning.html">
+  <meta name="twitter:card" content="summary">
+
+  <link rel="icon" href="/favicon.ico" sizes="16x16" type="image/x-icon">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Article",
+        "headline": "Reverse dictionary: how to find a word from a meaning",
+        "description": "A reverse dictionary lets you find a word from its meaning. How to describe a concept and get the exact word.",
+        "author": { "@id": "https://wordfor.xyz/#zshn25" },
+        "publisher": { "@id": "https://wordfor.xyz/#zshn25" },
+        "datePublished": "2026-05-30",
+        "mainEntityOfPage": "https://wordfor.xyz/blog/reverse-dictionary-how-to-find-a-word-from-a-meaning.html",
+        "isPartOf": { "@id": "https://wordfor.xyz/blog/#blog" }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://wordfor.xyz/" },
+          { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://wordfor.xyz/blog/" },
+          { "@type": "ListItem", "position": 3, "name": "Reverse dictionary: how to find a word from a meaning" }
+        ]
+      }
+    ]
+  }
+  </script>
+
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/blog/blog.css">
+</head>
+
+<body class="about-body">
+  <header class="header">
+    <div class="container header-row">
+      <a href="/" class="brand" aria-label="WordFor Home">
+        <span class="brand-icon">W</span><span class="brand-name">WordFor</span>
+      </a>
+      <nav class="nav-links">
+        <a href="/about.html">About</a>
+        <a href="/blog/">Blog</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="article-wrap">
+    <nav class="breadcrumbs"><a href="/">Home</a> &rsaquo; <a href="/blog/">Blog</a> &rsaquo; Reverse dictionary</nav>
+
+    <h1>Reverse dictionary: how to find a word from a meaning</h1>
+    <p class="article-meta">A practical guide &middot; runs entirely in your browser</p>
+
+    <p>A normal dictionary goes from a <em>word</em> to its <em>meaning</em>. A
+      <strong>reverse dictionary</strong> goes the other way: you type a meaning &mdash; a
+      description, a definition, a half-remembered idea &mdash; and it gives you the word.
+      It's the tool you want when the concept is clear in your head but the word won't come.</p>
+
+    <p>WordFor is a privacy-first reverse dictionary: you describe a concept and it returns
+      the closest matching words, ranked. Nothing is sent to a server &mdash; the search runs
+      in your browser.</p>
+
+    <div class="try-box">
+      <h3>Try these example searches</h3>
+      <ul class="try-list">
+        <li><a href="/?q=the%20smell%20of%20rain%20on%20dry%20earth">the smell of rain on dry earth</a></li>
+        <li><a href="/?q=a%20word%20said%20the%20same%20backwards%20and%20forwards">said the same backwards and forwards</a></li>
+        <li><a href="/?q=fear%20of%20long%20words">fear of long words</a></li>
+        <li><a href="/?q=using%20more%20words%20than%20needed">using more words than needed</a></li>
+        <li><a href="/?q=happy%20to%20learn%20about%20another%27s%20misfortune">happy at another's misfortune</a></li>
+      </ul>
+    </div>
+
+    <p>For those descriptions, the kind of words WordFor surfaces include:</p>
+    <div class="word-chips">
+      <span>petrichor</span><span>palindrome</span><span>hippopotomonstrosesquippedaliophobia</span>
+      <span>verbose</span><span>prolix</span><span>schadenfreude</span>
+    </div>
+
+    <h2>How to write a good reverse-dictionary query</h2>
+    <ul class="steps">
+      <li><strong>Describe the meaning, not the spelling.</strong> "a word for X" works, but
+        just describing X works just as well: <em>fear of long words</em>.</li>
+      <li><strong>Add the part of speech if you know it</strong> &mdash; "wordy (adjective)" vs
+        "wordiness (noun)" nudges the ranking.</li>
+      <li><strong>Use a whole phrase.</strong> Semantic search rewards context: "smell of rain
+        on dry earth" beats "rain smell".</li>
+      <li><strong>Try a synonym of the description</strong> if the first result isn't it &mdash;
+        small rewordings explore nearby meanings.</li>
+    </ul>
+
+    <h2>How ranking works (short version)</h2>
+    <p>Every result is scored by combining several signals:</p>
+    <ul class="steps">
+      <li><strong>Lexical match</strong> &mdash; overlap between your words and the entry.</li>
+      <li><strong>Semantic similarity</strong> &mdash; how close the <em>meaning</em> of your
+        description is to the word's definition, using on-device embeddings.</li>
+      <li><strong>Source confidence</strong> &mdash; how reliable the dictionaries that define
+        the word are.</li>
+      <li><strong>Lemma family grouping</strong> &mdash; inflections like <em>run/running/ran</em>
+        collapse to one entry so results aren't cluttered.</li>
+      <li><strong>Reranking</strong> &mdash; a fast first pass narrows candidates, then a more
+        precise pass reorders the top of the list.</li>
+    </ul>
+    <p>There's a deeper write-up in
+      <a href="/blog/how-wordfor-ranks-candidate-words.html">how WordFor ranks candidate words</a>.</p>
+
+    <h2>Reverse dictionary vs thesaurus vs word finder</h2>
+    <p>A <strong>thesaurus</strong> needs a starting word and gives synonyms. A
+      <strong>word finder</strong> usually works on letters or patterns. A
+      <strong>reverse dictionary</strong> starts from a <em>meaning</em> with no word at all &mdash;
+      which is exactly the "it's on the tip of my tongue" situation. If that's you, see
+      <a href="/blog/tip-of-my-tongue-word-finder.html">the tip-of-my-tongue word finder guide</a>.</p>
+
+    <p class="related"><strong>Related:</strong> reverse dictionary, word finder, tip of my tongue,
+      vocabulary, thesaurus, word meaning, find a word, semantic search.</p>
+
+    <div class="post-nav">
+      <a href="/">&larr; Open WordFor and find your word</a>
+    </div>
+  </main>
+</body>
+</html>

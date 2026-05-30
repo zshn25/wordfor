@@ -1,0 +1,25 @@
+/* Shared styles for WordFor blog articles. Static pages, no model load. */
+.article-wrap { max-width: 720px; margin: 0 auto; padding: 2rem 1.25rem 4rem; line-height: 1.65; }
+.breadcrumbs { font-size: .85rem; opacity: .7; margin-bottom: 1.25rem; }
+.breadcrumbs a { color: inherit; }
+.article-wrap h1 { font-size: 1.95rem; line-height: 1.25; margin: 0 0 .75rem; }
+.article-wrap h2 { font-size: 1.3rem; margin: 2rem 0 .6rem; }
+.article-wrap h3 { font-size: 1.08rem; margin: 1.4rem 0 .4rem; }
+.article-wrap p { margin: 0 0 1rem; }
+.article-meta { opacity: .65; font-size: .9rem; margin-bottom: 1.5rem; }
+.try-box { border: 1px solid rgba(100,103,232,.4); background: rgba(100,103,232,.06);
+  border-radius: 12px; padding: 1rem 1.25rem; margin: 1.25rem 0; }
+.try-box h3 { margin-top: 0; }
+.try-list { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .5rem; }
+.try-list a { display: inline-block; padding: .35rem .7rem; border-radius: 999px;
+  background: #6467E8; color: #fff; text-decoration: none; font-size: .9rem; }
+.try-list a:hover { background: #4f52d6; }
+.word-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 1rem; }
+.word-chips span { padding: .25rem .6rem; border: 1px solid rgba(128,128,128,.3);
+  border-radius: 999px; font-size: .9rem; }
+.related { font-size: .9rem; opacity: .8; }
+.article-wrap ul.steps { padding-left: 1.2rem; }
+.article-wrap ul.steps li { margin-bottom: .4rem; }
+.post-nav { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(128,128,128,.25);
+  font-size: .95rem; }
+.post-nav a { color: #6467E8; }

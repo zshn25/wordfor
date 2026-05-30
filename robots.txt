@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://wordfor.xyz/sitemap.txt
+Sitemap: https://wordfor.xyz/sitemap.xml

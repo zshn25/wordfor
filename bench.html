@@ -23,19 +23,19 @@
     td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono', Consolas, monospace; font-size: .85rem; }
     tr.best td { background: #ECFDF5; font-weight: 600; }
     .bar { height: 6px; border-radius: 3px; background: #E2E8F0; overflow: hidden; min-width: 80px; display: inline-block; width: 80px; vertical-align: middle; }
-    .bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #818CF8, #7C3AED); }
+    .bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #818CF8, #6467E8); }
     .bar-fill.slow { background: linear-gradient(90deg, #FCA5A5, #EF4444); }
     .bar-fill.med { background: linear-gradient(90deg, #FCD34D, #F59E0B); }
     .running { color: #d97706; }
     .done { color: #16a34a; font-weight: 600; }
     .fail { color: #dc2626; }
     .skip { color: #94a3b8; }
-    button { padding: 10px 24px; background: #7C3AED; color: #fff; border: none; border-radius: 10px; font-size: .95rem; font-weight: 600; cursor: pointer; margin-right: 8px; }
+    button { padding: 10px 24px; background: #6467E8; color: #fff; border: none; border-radius: 10px; font-size: .95rem; font-weight: 600; cursor: pointer; margin-right: 8px; }
     button:hover { background: #3730A3; }
     button:disabled { opacity: .5; cursor: not-allowed; }
     .btn-group { margin-bottom: 16px; }
     #log { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 10px; font-family: 'SF Mono', Consolas, monospace; font-size: .78rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; margin-top: 20px; }
-    a { color: #7C3AED; text-decoration: none; }
+    a { color: #6467E8; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .info { font-size: .82rem; color: #94A3B8; margin-top: 4px; }
   </style>
@@ -53,15 +53,15 @@
     </thead>
     <tbody>
       <!-- EVAL_START (do not remove: compare_eval.py replaces rows between these markers) -->
-      <tr><td>Potion base int4</td><td>Lite</td><td class="num">0.5033</td><td class="num">27/67</td><td class="num">42/67</td><td>distilled-mxbai base, int4 scoring</td></tr>
-      <tr><td>Potion fine-tuned int4</td><td>Lite</td><td class="num">0.5662</td><td class="num">33/67</td><td class="num">42/67</td><td>distilled-mxbai fine-tuned, int4 scoring</td></tr>
-      <tr><td>Full pure binary (ITQ)</td><td>Full</td><td class="num">0.5629</td><td class="num">30/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, 1-bit binary ITQ, 48 bytes/entry</td></tr>
-      <tr><td>Full pure int2</td><td>Full</td><td class="num">0.5671</td><td class="num">31/67</td><td class="num">46/67</td><td>mdbr-leaf-mt, pure int2, 96 bytes/entry</td></tr>
-      <tr><td>Full pure int3</td><td>Full</td><td class="num">0.6437</td><td class="num">37/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, pure int3, 144 bytes/entry</td></tr>
-      <tr><td>Full pure int4</td><td>Full</td><td class="num">0.6088</td><td class="num">34/67</td><td class="num">51/67</td><td>mdbr-leaf-mt, pure int4, 192 bytes/entry</td></tr>
-      <tr><td>Full pure int8</td><td>Full</td><td class="num">0.6375</td><td class="num">36/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, pure int8, 384 bytes/entry</td></tr>
-      <tr><td>Full binary+int3 rerank</td><td>Full</td><td class="num">0.6438</td><td class="num">37/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, binary+int3 rerank, 192 bytes/entry (desktop)</td></tr>
-      <tr><td>Full binary+int4 rerank</td><td>Full</td><td class="num">0.6090</td><td class="num">34/67</td><td class="num">51/67</td><td>mdbr-leaf-mt, binary+int4 rerank, 240 bytes/entry</td></tr>
+      <tr><td>Potion base int4</td><td>Lite</td><td class="num">0.5003</td><td class="num">27/67</td><td class="num">41/67</td><td>distilled-mxbai base, int4 scoring</td></tr>
+      <tr><td>Potion fine-tuned int4</td><td>Lite</td><td class="num">0.5701</td><td class="num">34/67</td><td class="num">43/67</td><td>distilled-mxbai fine-tuned, int4 scoring</td></tr>
+      <tr><td>Full pure binary (ITQ)</td><td>Full</td><td class="num">0.6102</td><td class="num">34/67</td><td class="num">51/67</td><td>mdbr-leaf-mt, 1-bit binary ITQ, 48 bytes/entry</td></tr>
+      <tr><td>Full pure int2</td><td>Full</td><td class="num">0.6100</td><td class="num">35/67</td><td class="num">45/67</td><td>mdbr-leaf-mt, pure int2, 96 bytes/entry</td></tr>
+      <tr><td>Full pure int3</td><td>Full</td><td class="num">0.6348</td><td class="num">35/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, pure int3, 144 bytes/entry</td></tr>
+      <tr><td>Full pure int4</td><td>Full</td><td class="num">0.6339</td><td class="num">36/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, pure int4, 192 bytes/entry</td></tr>
+      <tr><td>Full pure int8</td><td>Full</td><td class="num">0.6439</td><td class="num">36/67</td><td class="num">55/67</td><td>mdbr-leaf-mt, pure int8, 384 bytes/entry</td></tr>
+      <tr><td>Full binary+int3 rerank</td><td>Full</td><td class="num">0.6346</td><td class="num">35/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, binary+int3 rerank, 192 bytes/entry (desktop)</td></tr>
+      <tr><td>Full binary+int4 rerank</td><td>Full</td><td class="num">0.6337</td><td class="num">36/67</td><td class="num">52/67</td><td>mdbr-leaf-mt, binary+int4 rerank, 240 bytes/entry</td></tr>
       <!-- EVAL_END -->
     </tbody>
   </table>

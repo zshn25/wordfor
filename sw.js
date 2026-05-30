@@ -9,7 +9,7 @@
  *   - Navigation: network-first with offline fallback to cached shell.
  */
 
-const CACHE_NAME = "wordfor-v15";
+const CACHE_NAME = "wordfor-v16";
 
 const APP_SHELL = [
   "/",
@@ -18,17 +18,23 @@ const APP_SHELL = [
   "/style.css",
   "/app.js",
   "/manifest.json",
-  "/icon-192.png",
-  "/icon-512.png",
+  "/android-chrome-192x192.png",
+  "/android-chrome-512x512.png",
 ];
 
 // Pre-cache app shell on install
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    caches.open(CACHE_NAME).then(async cache => {
+      await Promise.allSettled(
+        APP_SHELL.map(url => cache.add(url))
+      );
+    })
   );
   self.skipWaiting();
 });
+
 
 // Clean old caches on activate
 self.addEventListener("activate", (event) => {

@@ -9,7 +9,7 @@
   <!-- SEO -->
   <title>WordFor: Reverse Dictionary | Find the Word You're Looking For</title>
   <meta name="description"
-    content="A privacy-first reverse dictionary: describe a concept, get the word. Powered by AI that runs entirely in your browser: no sign-up, no tracking.">
+    content="A privacy-first reverse dictionary: describe a concept, get the word. Powered by AI that runs entirely in your browser: no sign-up, no cookies.">
   <meta name="keywords"
     content="reverse dictionary, word finder, thesaurus, find a word, describe a word, vocabulary tool, synonym finder, whats the word, tip of my tongue">
   <link rel="canonical" href="https://wordfor.xyz/">
@@ -18,21 +18,25 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="WordFor: Reverse Dictionary">
   <meta property="og:description"
-    content="A privacy-first reverse dictionary: describe a concept, get the word. Powered by AI that runs entirely in your browser: no sign-up, no tracking.">
+    content="A privacy-first reverse dictionary: describe a concept, get the word. Powered by AI that runs entirely in your browser: no sign-up, no cookies.">
   <meta property="og:url" content="https://wordfor.xyz/">
   <meta property="og:site_name" content="WordFor">
+  <meta property="og:image" content="https://wordfor.xyz/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
 
-  <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="WordFor: Reverse Dictionary">
-  <meta name="twitter:description"
-    content="A privacy-first reverse dictionary: describe a concept, get the word. Powered by AI that runs entirely in your browser: no sign-up, no tracking.">
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="https://wordfor.xyz/" />
+  <meta name="twitter:title" content="WordFor" />
+  <meta name="twitter:description" content="Describe it. Find the word." />
+  <meta name="twitter:image" content="https://wordfor.xyz/og-image.png" />
 
   <!-- Favicon -->
   <link rel="icon" href="/favicon.ico" sizes="16x16" type="image/x-icon">
-  <link rel="icon"
-    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%237C3AED'/><text x='16' y='22' text-anchor='middle' fill='white' font-family='Georgia,serif' font-size='18' font-weight='bold'>W</text></svg>"
-    type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 
   <!-- Prevent crawl traps while fully preserving discovery -->
   <script>
@@ -78,7 +82,7 @@
           "Tip of my Tongue"
         ],
         "url": "https://wordfor.xyz/",
-        "description": "A privacy-first reverse dictionary: describe a concept, get the word. Powered by AI that runs entirely in your browser: no sign-up, no tracking.",
+        "description": "A privacy-first reverse dictionary: describe a concept, get the word. Powered by AI that runs entirely in your browser: no sign-up, no cookies.",
         "publisher": {
           "@id": "https://wordfor.xyz/#zshn25"
         },
@@ -100,7 +104,7 @@
         "@id": "https://wordfor.xyz/#app",
         "name": "WordFor",
         "url": "https://wordfor.xyz/",
-        "description": "A privacy-first reverse dictionary: describe a concept, get the word. Powered by AI that runs entirely in your browser: no sign-up, no tracking.",
+        "description": "A privacy-first reverse dictionary: describe a concept, get the word. Powered by AI that runs entirely in your browser: no sign-up, no cookies.",
         "applicationCategory": "ReferenceApplication",
         "applicationSubCategory": "Dictionary",
         "operatingSystem": "Any",
@@ -126,7 +130,8 @@
   </script>
 
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#7C3AED">
+  <meta name="theme-color" content="#F6F7FB" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1A2030" media="(prefers-color-scheme: dark)">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="WordFor">
@@ -148,7 +153,7 @@
   </div>
 
   <!-- MAIN APP (hidden until ready) -->
-  <div id="app" class="app hidden" role="main">
+  <div id="app" class="app hidden">
 
     <!-- HEADER -->
     <header class="header">
@@ -159,6 +164,7 @@
         </a>
         <nav class="nav-links" id="nav-links">
           <a href="/about.html">About</a>
+          <a href="/blog/">Blog</a>
           <a href="https://ko-fi.com/zshn25" target="_blank" rel="noopener" class="nav-donate">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path
@@ -179,25 +185,25 @@
     </header>
 
     <!-- HERO / SEARCH -->
-    <section class="hero">
-      <div class="container">
-        <h1 class="hero-title">Describe it, find the&nbsp;word.</h1>
-        <p class="hero-subtitle">Type a description and get matching English words instantly: powered by AI, running
-          entirely in your browser.</p>
+    <main id="main-content">
+      <section class="hero">
+        <div class="container">
+          <h1 class="hero-title">Describe it, find the&nbsp;word.</h1>
+          <p class="hero-subtitle">Describe a meaning, feeling, or idea. WordFor suggests the English word -- Privately, instantly, in your browser.</p>
 
-        <div class="search-box" role="search">
-          <label for="search-input" class="sr-only">Describe the word you're looking for</label>
-          <input id="search-input" type="text" class="search-input" placeholder="e.g. fear of snakes" autocomplete="off"
+          <div class="search-box" role="search">
+            <label for="search-input" class="sr-only">Describe the word you're looking for</label>
+            <input id="search-input" type="text" class="search-input" placeholder="e.g. fear of snakes" autocomplete="off"
             spellcheck="true" autofocus>
-          <button id="search-btn" class="search-btn" aria-label="Search">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            <button id="search-btn" class="search-btn" aria-label="Search">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
               stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
           </button>
         </div>
-
+        
         <!-- Example queries -->
         <div class="examples" id="examples">
           <span class="examples-label">Try:</span>
@@ -207,7 +213,9 @@
           <button class="example-chip" data-query="extreme happiness">extreme happiness</button>
           <button class="example-chip" data-query="unable to be understood">unable to be understood</button>
         </div>
-
+        <p class="privacy-inline-note">
+          No account. No server search logs. Your query stays on your device.
+        </p>
         <!-- Rolling showcase -->
         <div class="showcase" id="showcase" aria-hidden="true">
           <div class="showcase-row">
@@ -221,15 +229,44 @@
           </div>
         </div>
       </div>
-    </section>
+      </section>
 
-    <!-- RESULTS -->
-    <section class="results-section">
+      <!-- RESULTS -->
+      <section class="results-section">
+        <div class="container">
+          <div id="results-status" class="results-status" aria-live="polite"></div>
+          <div id="results" class="results-grid"></div>
+        </div>
+      </section>
+
+      <!-- STATIC EXAMPLES / SEO + ONBOARDING -->
+      <!-- <section class="examples-section" aria-labelledby="examples-section-title">
       <div class="container">
-        <div id="results-status" class="results-status" aria-live="polite"></div>
-        <div id="results" class="results-grid"></div>
+        <div class="section-kicker">Examples</div>
+        <h2 id="examples-section-title" class="examples-section-title">Search by meaning</h2>
+        <p class="examples-section-text">
+          Try a definition, emotion, phrase, or half-remembered idea.
+        </p>
+
+        <div class="example-grid">
+          <a href="/?q=unable+to+be+put+into+words">
+            <span class="example-query">unable to be put into words</span>
+            <span class="example-result">ineffable</span>
+          </a>
+
+          <a href="/?q=fear+of+heights">
+            <span class="example-query">fear of heights</span>
+            <span class="example-result">acrophobia</span>
+          </a>
+
+          <a href="/?q=longing+for+the+past">
+            <span class="example-query">longing for the past</span>
+            <span class="example-result">nostalgia</span>
+          </a>
+        </div>
       </div>
-    </section>
+    </section> -->
+    </main>
 
     <!-- FOOTER -->
     <footer class="footer">
@@ -259,6 +296,25 @@
     </footer>
   </div><!-- /app -->
 
+  <div id="privacy-banner" class="privacy-banner" role="region" aria-label="Privacy notice" hidden>
+    <p class="privacy-banner-text">
+      <strong>Privacy-first:</strong>
+      WordFor runs searches in your browser. Queries are not sent to a server.
+      It uses cookie-free GoatCounter page-view analytics.
+      <a href="/about.html#privacy">Learn more</a>.
+    </p>
+
+    <div class="privacy-banner-actions">
+      <button id="privacy-banner-accept" class="privacy-banner-button" type="button">
+        Got it
+      </button>
+
+      <button id="privacy-banner-close" class="privacy-banner-close" type="button" aria-label="Dismiss privacy notice">
+        ×
+      </button>
+    </div>
+  </div>
+
   <!-- Ko-fi floating button -->
   <a href="https://ko-fi.com/zshn25" target="_blank" rel="noopener" class="kofi-fab" title="Support on Ko-fi"
     aria-label="Support on Ko-fi">
@@ -268,6 +324,8 @@
     </svg>
   </a>
 
+  <!-- Cache-first sharded asset loader (must run before app.js module) -->
+  <script src="assets/shard-loader.js"></script>
   <script type="module" src="app.js"></script>
   <script data-goatcounter="https://zshn25.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </body>

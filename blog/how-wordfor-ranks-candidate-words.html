@@ -1,0 +1,146 @@
+<!-- © 2025 Zeeshan Khan Suri (zshn25). Licensed under CC-BY-NC-ND-4.0. -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How WordFor Ranks Candidate Words | WordFor</title>
+  <meta name="description"
+    content="How WordFor ranks reverse-dictionary results: lexical match, semantic similarity, source confidence, lemma family grouping, and binary-plus-int3 reranking.">
+  <link rel="canonical" href="https://wordfor.xyz/blog/how-wordfor-ranks-candidate-words.html">
+
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="How WordFor ranks candidate words">
+  <meta property="og:description" content="The signals behind the ranking, explained.">
+  <meta property="og:url" content="https://wordfor.xyz/blog/how-wordfor-ranks-candidate-words.html">
+  <meta name="twitter:card" content="summary">
+
+  <link rel="icon" href="/favicon.ico" sizes="16x16" type="image/x-icon">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Article",
+        "headline": "How WordFor ranks candidate words",
+        "description": "The ranking signals behind WordFor: lexical, semantic, source confidence, lemma families, reranking.",
+        "author": { "@id": "https://wordfor.xyz/#zshn25" },
+        "publisher": { "@id": "https://wordfor.xyz/#zshn25" },
+        "datePublished": "2026-05-30",
+        "mainEntityOfPage": "https://wordfor.xyz/blog/how-wordfor-ranks-candidate-words.html",
+        "isPartOf": { "@id": "https://wordfor.xyz/blog/#blog" }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://wordfor.xyz/" },
+          { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://wordfor.xyz/blog/" },
+          { "@type": "ListItem", "position": 3, "name": "How WordFor ranks candidate words" }
+        ]
+      }
+    ]
+  }
+  </script>
+
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/blog/blog.css">
+</head>
+
+<body class="about-body">
+  <header class="header">
+    <div class="container header-row">
+      <a href="/" class="brand" aria-label="WordFor Home">
+        <span class="brand-icon">W</span><span class="brand-name">WordFor</span>
+      </a>
+      <nav class="nav-links">
+        <a href="/about.html">About</a>
+        <a href="/blog/">Blog</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="article-wrap">
+    <nav class="breadcrumbs"><a href="/">Home</a> &rsaquo; <a href="/blog/">Blog</a> &rsaquo; How WordFor ranks candidate words</nav>
+
+    <h1>How WordFor ranks candidate words</h1>
+    <p class="article-meta">From your description to a ranked list &mdash; entirely on your device</p>
+
+    <p>When you describe a meaning, WordFor scores hundreds of thousands of dictionary entries
+      and returns the best matches in order. Here's what goes into that ranking, and why the
+      list looks the way it does.</p>
+
+    <div class="try-box">
+      <h3>Watch it in action</h3>
+      <ul class="try-list">
+        <li><a href="/?q=excessively%20wordy">excessively wordy</a></li>
+        <li><a href="/?q=lasting%20for%20a%20very%20short%20time">lasting a very short time</a></li>
+        <li><a href="/?q=fear%20of%20being%20without%20your%20phone">fear of being without your phone</a></li>
+      </ul>
+    </div>
+
+    <h2>1. Lexical match</h2>
+    <p>First, literal overlap between the words in your query and the words in each entry's
+      definition and synonyms. If you type "wordy", entries whose definitions literally contain
+      "wordy" get an immediate boost. This is fast and precise when your wording happens to line
+      up with the dictionary's.</p>
+
+    <h2>2. Semantic similarity</h2>
+    <p>Most reverse-dictionary queries <em>don't</em> share words with the answer &mdash; you
+      describe a concept in your own words. So WordFor converts both your query and every entry
+      into <strong>embeddings</strong> (numeric meaning-vectors) and measures how close they are.
+      This is what lets "lasting a very short time" find <em>ephemeral</em> and
+      <em>fleeting</em> even with no shared words.</p>
+    <p>The embeddings are computed in your browser with a small transformer model &mdash; no
+      query is ever sent to a server.</p>
+
+    <h2>3. Source confidence</h2>
+    <p>Each word is defined by one or more public-domain dictionaries (WordNet, Webster 1913,
+      the Century Dictionary, Chambers 1908, and others). Entries that are well attested across
+      reliable sources, with richer and more specific definitions, are weighted up; thin or
+      obscure entries are weighted down. This keeps genuinely useful words above noise.</p>
+
+    <h2>4. Lemma family grouping</h2>
+    <p>English words come in families: <em>run / runs / running / ran</em>. Showing all of them
+      would clutter the list, so at build time WordFor groups inflected forms under a single
+      <strong>lemma</strong> and shows one row per family. Crucially, it only collapses forms
+      that are genuinely the same word &mdash; it never merges words that just share a prefix
+      (<em>unhappy</em> is not <em>happy</em>; <em>invaluable</em> is not <em>valuable</em>).</p>
+
+    <h2>5. Reranking (fast first pass, precise second pass)</h2>
+    <p>Scoring every entry at full precision for every keystroke would be slow, especially on a
+      phone. So WordFor uses two passes:</p>
+    <ul class="steps">
+      <li><strong>First pass &mdash; binary.</strong> A compact binary representation scores the
+        whole dictionary in milliseconds and shortlists the best candidates. On mobile this can
+        be the only pass, which is why search feels instant.</li>
+      <li><strong>Second pass &mdash; reranking.</strong> On desktop (and after the background
+        download finishes) a higher-precision representation re-scores just the shortlist,
+        sharpening the order at the top of the list.</li>
+    </ul>
+    <p>This is why the page is usable immediately in "fast mode" and then quietly upgrades to
+      "best ranking" once the reranker has loaded &mdash; you never wait for the big download to
+      start searching.</p>
+
+    <h2>Putting it together</h2>
+    <p>The final score is a blend: lexical and semantic similarity decide the candidates, source
+      confidence breaks ties toward trustworthy words, lemma grouping tidies the list, and
+      reranking polishes the top results. For vague, feeling-based queries the semantic signal
+      dominates; for precise definitional queries the lexical signal carries more weight.</p>
+
+    <p>See it from the user's side in
+      <a href="/blog/reverse-dictionary-how-to-find-a-word-from-a-meaning.html">how to find a word
+      from a meaning</a>, and the data side in
+      <a href="/blog/public-domain-dictionaries-without-copying-restricted-data.html">how we use
+      public-domain dictionaries</a>.</p>
+
+    <p class="related"><strong>Related:</strong> semantic search, reverse dictionary, ranking,
+      embeddings, vocabulary, word finder, thesaurus, word meaning.</p>
+
+    <div class="post-nav">
+      <a href="/">&larr; Try a search and watch the ranking</a>
+    </div>
+  </main>
+</body>
+</html>
