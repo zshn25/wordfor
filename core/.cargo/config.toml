@@ -1,0 +1,11 @@
+# Build requires MinGW WinLibs on PATH for dlltool + windres (Tauri/windows-sys)
+# Install: winget install -e --id BrechtSanders.WinLibs.POSIX.UCRT.LLVM
+# Add to PATH before building:
+#   PATH="$PATH:/c/Users/z.suri/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT.LLVM_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin"
+
+[env]
+CC = "C:\\Users\\z.suri\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT.LLVM_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin\\gcc.exe"
+AR = "C:\\Users\\z.suri\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT.LLVM_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin\\ar.exe"
+
+[target.x86_64-pc-windows-gnu]
+linker = "C:\\Users\\z.suri\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT.LLVM_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin\\gcc.exe"

@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "wordfor-core",
+    "wordfor-tauri",
+    "wordfor-android",
+    "wordfor-ios",
+]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"

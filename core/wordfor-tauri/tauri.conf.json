@@ -1,0 +1,45 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicedozie4u/tauri-docs/dev/.vscode/schema.json",
+  "productName": "WordFor",
+  "version": "0.1.0",
+  "identifier": "xyz.wordfor.desktop",
+  "build": {
+    "frontendDist": "./web-dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "WordFor - Reverse Dictionary",
+        "width": 900,
+        "height": 700,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://gc.zgo.at https://*.huggingface.co https://cdn.jsdelivr.net"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "../../android-chrome-192x192.png",
+      "../../android-chrome-512x512.png"
+    ],
+    "resources": [
+      "../../data/words.json",
+      "../../data/embeddings_binary.bin",
+      "../../data/embeddings_int3.bin",
+      "../../data/embeddings_int3_ranges.bin",
+      "../../data/embeddings_itq.bin",
+      "../../data/embeddings_ranges.bin",
+      "../../data/meta.json"
+    ]
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

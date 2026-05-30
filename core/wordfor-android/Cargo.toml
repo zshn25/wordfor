@@ -1,0 +1,12 @@
+[package]
+name = "wordfor-android"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wordfor-core = { path = "../wordfor-core", default-features = false }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
