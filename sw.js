@@ -9,7 +9,7 @@
  *   - Navigation: network-first with offline fallback to cached shell.
  */
 
-const CACHE_NAME = "wordfor-v16";
+const CACHE_NAME = "wordfor-v17";
 
 const APP_SHELL = [
   "/",

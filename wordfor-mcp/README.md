@@ -62,5 +62,5 @@ Optional semantic mode (loading the embeddings) is documented in `docs/mcp.md`.
 - HTTP mode is rate-limited (`WORDFOR_RATE_MAX` / `WORDFOR_RATE_WINDOW_MS`).
 - Queries are not logged unless you opt in (`WORDFOR_LOG_QUERIES=1`, not enabled by default).
 
-See `docs/mcp.md` for client setup (Claude Desktop, Claude remote connector, ChatGPT /
-OpenAI Apps SDK, generic clients) and `mcp_publish_checklist.md` for publishing.
+See `../docs/mcp.md` for client setup (Claude Desktop, Claude remote connector, ChatGPT /
+OpenAI Apps SDK, generic clients) and `../docs/archive/mcp_publish_checklist.md` for publishing.

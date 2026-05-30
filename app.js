@@ -292,7 +292,6 @@ let potionRangeScale;   // Float32Array(256): per-dim range
 
 // Full-mode embeddings (for reranking stage 2)
 let fullEmbInt8;        // Uint8Array : int8 quantized full embeddings
-let fullEmbInt4;        // Uint8Array : int4 packed full embeddings (2 nibbles/byte)
 let fullEmbInt3;        // Uint8Array : int3 packed full embeddings (8 dims/3 bytes)
 let fullRangeMin;       // Float32Array(384): per-dim min
 let fullRangeScale;     // Float32Array(384): per-dim range
@@ -374,37 +373,19 @@ async function fetchWithProgress(url, progressId) {
 async function loadWordList() {
   addProgressRow("words", "Word list (~18 MB)");
   perf.mark("words_start");
-  // Prefer cache-first sharded loader (assets/model-manifest.json); fall back to
-  // the monolithic data/words.json when no manifest is deployed.
-  let loadedViaShards = false;
-  try {
-    if (window.ShardLoader && (await window.ShardLoader.isSharded("words"))) {
-      wordEntries = await window.ShardLoader.loadJSON("words", {
-        onProgress: (pct) => setProgress("words", pct),
-      });
-      loadedViaShards = true;
-    }
-  } catch (e) {
-    console.warn("shard load of words.json failed, falling back to monolith:", e.message);
-  }
-  if (!loadedViaShards) {
-    const res = await fetch(dataUrl("words.json"));
-    setProgress("words", 50);
-    wordEntries = await res.json();
-  }
+  const res = await fetch(dataUrl("words.json"));
+  setProgress("words", 50);
+  wordEntries = await res.json();
   setProgress("words", 100);
   perf.measure("words_loaded", "words_start");
   // Lemma family map (built at compile time; replaces runtime stemming).
   // Non-fatal: search still works without it, just without inflectional grouping.
   try {
-    let obj = null;
-    if (window.ShardLoader && (await window.ShardLoader.isSharded("forms_to_lemma"))) {
-      obj = await window.ShardLoader.loadJSON("forms_to_lemma");
-    } else {
-      const lemRes = await fetch(dataUrl("forms_to_lemma.json"));
-      if (lemRes.ok) obj = await lemRes.json();
+    const lemRes = await fetch(dataUrl("forms_to_lemma.json"));
+    if (lemRes.ok) {
+      const obj = await lemRes.json();
+      formsToLemma = new Map(Object.entries(obj));
     }
-    if (obj) formsToLemma = new Map(Object.entries(obj));
   } catch (e) {
     console.warn("forms_to_lemma.json not loaded:", e.message);
   }
@@ -535,7 +516,7 @@ async function loadFullModel() {
 
 /**
  * Lazy-load reranking embeddings (desktop only).
- * Tries int3 (~75 MB, best MRR) first, then int4 (~100 MB), then int8 (~200 MB).
+ * Tries int3 (~75 MB, best MRR) first, then int8 (~200 MB).
  * The app starts with binary-only scoring and upgrades silently.
  */
 async function loadFullRerank() {
@@ -549,25 +530,16 @@ async function loadFullRerank() {
 
   // Try int3 first (best MRR)
   try {
-    let int3Buf, int3RangesBuf;
-    if (window.ShardLoader && (await window.ShardLoader.isSharded("embeddings_int3"))) {
-      // Cache-first sharded fetch (background priority) -> upgrades ranking silently
-      [int3Buf, int3RangesBuf] = await Promise.all([
-        window.ShardLoader.loadAsset("embeddings_int3"),
-        window.ShardLoader.loadAsset("embeddings_int3_ranges"),
-      ]);
-    } else {
-      [int3Buf, int3RangesBuf] = await Promise.all([
-        fetch(dataUrl("embeddings_int3.bin")).then(r => {
-          if (!r.ok) throw new Error("int3 not found");
-          return r.arrayBuffer();
-        }),
-        fetch(dataUrl("embeddings_int3_ranges.bin")).then(r => {
-          if (!r.ok) throw new Error("int3 ranges not found");
-          return r.arrayBuffer();
-        }),
-      ]);
-    }
+    const [int3Buf, int3RangesBuf] = await Promise.all([
+      fetch(dataUrl("embeddings_int3.bin")).then(r => {
+        if (!r.ok) throw new Error("int3 not found");
+        return r.arrayBuffer();
+      }),
+      fetch(dataUrl("embeddings_int3_ranges.bin")).then(r => {
+        if (!r.ok) throw new Error("int3 ranges not found");
+        return r.arrayBuffer();
+      }),
+    ]);
     fullEmbInt3 = new Uint8Array(int3Buf);
     const rd3 = new Float32Array(int3RangesBuf);
     fullRangeMin = rd3.subarray(0, FULL_DIMS);
@@ -576,20 +548,7 @@ async function loadFullRerank() {
     console.log("Loaded int3 reranking embeddings");
     return;
   } catch (e) {
-    console.log("Int3 not available, trying int4:", e.message);
-  }
-
-  // Try int4 (half the size of int8)
-  try {
-    const int4Buf = await fetch(dataUrl("embeddings_int4.bin")).then(r => {
-      if (!r.ok) throw new Error("int4 not found");
-      return r.arrayBuffer();
-    });
-    fullEmbInt4 = new Uint8Array(int4Buf);
-    console.log("Loaded int4 reranking embeddings");
-    return;
-  } catch (e) {
-    console.log("Int4 not available, trying int8:", e.message);
+    console.log("Int3 not available, trying int8:", e.message);
   }
 
   // Fallback to int8
@@ -902,26 +861,6 @@ function scoreBinaryRerank(qvec, count, out) {
       }
       out[idx] = dot;
     }
-  } else if (fullEmbInt4) {
-    // Rerank with int4 (packed nibbles)
-    const qScaled = new Float32Array(FULL_DIMS);
-    let qOffset = 0;
-    for (let d = 0; d < FULL_DIMS; d++) {
-      qScaled[d] = qvec[d] * fullRangeScale[d] / 15;
-      qOffset += qvec[d] * fullRangeMin[d];
-    }
-    const halfDims = FULL_DIMS >> 1;
-    for (let j = 0; j < k; j++) {
-      const idx = topIdx[j];
-      let dot = qOffset;
-      const base = idx * halfDims;
-      for (let d = 0; d < FULL_DIMS; d += 2) {
-        const packed = fullEmbInt4[base + (d >> 1)];
-        dot += qScaled[d] * (packed >> 4);
-        dot += qScaled[d + 1] * (packed & 0x0F);
-      }
-      out[idx] = dot;
-    }
   } else {
     // Rerank with int8
     const qScaled = new Float32Array(FULL_DIMS);
@@ -978,7 +917,7 @@ async function search(query) {
   const qvec = await embedQuery(query);
   const scored = new Float32Array(count);
 
-  const rerankReady = fullEmbInt3 || fullEmbInt4 || fullEmbInt8;
+  const rerankReady = fullEmbInt3 || fullEmbInt8;
 
   if (fullReady) {
     if (fullBinaryReady && rerankReady) {

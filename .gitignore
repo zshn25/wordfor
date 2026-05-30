@@ -104,7 +104,10 @@ Thumbs.db
 # Unused int4 rerank embeddings (105 MB, not loaded by app.js; exceeds GitHub 100 MiB limit)
 data/embeddings_int4.bin
 
-# Local sharding artifacts (monoliths <100MB are still served directly; shards are
-# a regenerable GitHub-friendly fallback produced by build/split_assets.py)
+# Local-only sharded asset output (sharding was removed; app.js fetches monoliths directly)
 data/shards/
-assets/model-manifest.json
+
+# Machine-specific local Rust build config (hardcodes the developer's MinGW paths).
+# Must NOT be committed: its [env] CC/AR leak into CI and break macOS/Windows builds.
+# See MAINTENANCE.md for the local windows-gnu toolchain setup.
+core/.cargo/config.toml
