@@ -1,23 +1,28 @@
 {
   "bit_index": {
-    "century": 0,
-    "chambers1908": 1,
-    "cmudict": 2,
-    "conceptnet": 3,
-    "edd": 4,
-    "gcide_full": 5,
-    "gcide_pd_webster": 6,
-    "llm_augmented": 7,
-    "moby_extra": 8,
-    "moby_thesaurus": 9,
-    "oed1_fascicles": 10,
-    "oewn": 11,
-    "open_rogets": 12,
-    "opted": 13,
-    "roget1911_pg": 14,
-    "vulgar_tongue_1811": 15,
-    "webster1913": 16,
-    "wiktionary": 17
+    "allens_synonyms": 0,
+    "century": 1,
+    "chambers1908": 2,
+    "cmudict": 3,
+    "conceptnet": 4,
+    "edd": 5,
+    "freedict": 6,
+    "gcide_full": 7,
+    "gcide_pd_webster": 8,
+    "lewis_short": 9,
+    "llm_augmented": 10,
+    "moby_extra": 11,
+    "moby_thesaurus": 12,
+    "oed1_fascicles": 13,
+    "oewn": 14,
+    "onelook": 15,
+    "open_rogets": 16,
+    "opted": 17,
+    "reta_vortaro": 18,
+    "roget1911_pg": 19,
+    "vulgar_tongue_1811": 20,
+    "webster1913": 21,
+    "wiktionary": 22
   },
   "sources": {
     "oewn": {
@@ -99,7 +104,7 @@
     },
     "cmudict": {
       "name": "CMU Pronouncing Dictionary",
-      "license": "BSD-2-Clause-like (CMU)",
+      "license": "BSD-2-Clause (CMU) / 2-clause",
       "redistribute_text": false,
       "default_visible": false,
       "attribution_required": true
@@ -145,6 +150,41 @@
       "redistribute_text": false,
       "default_visible": false,
       "attribution_required": true
+    },
+    "allens_synonyms": {
+      "name": "Allen's Synonyms and Antonyms",
+      "license": "Public domain (F. Sturges Allen, 1920, pre-1924 US)",
+      "redistribute_text": true,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "lewis_short": {
+      "name": "Lewis & Short, A Latin Dictionary (1879)",
+      "license": "Original book PD; common digital derivatives are CC BY-SA / CC BY-NC-SA",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "freedict": {
+      "name": "FreeDict dictionaries",
+      "license": "Per-dictionary: often GPL / GFDL / CC BY-SA",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "reta_vortaro": {
+      "name": "Reta Vortaro (ReVo)",
+      "license": "GPL-2.0",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": true
+    },
+    "onelook": {
+      "name": "OneLook dictionary meta-search",
+      "license": "Meta-search index over third-party dictionaries; no redistribution license",
+      "redistribute_text": false,
+      "default_visible": false,
+      "attribution_required": false
     }
   }
 }

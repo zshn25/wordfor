@@ -1,6 +1,6 @@
 {
-  "build_date": "2026-05-30T00:04:00",
-  "total_entries": 576405,
+  "build_date": "2026-05-31T11:39:02",
+  "total_entries": 576403,
   "sources": {
     "oewn": {
       "name": "Open English WordNet 2025+",
@@ -13,14 +13,14 @@
       "name": "Webster's Unabridged Dictionary (1913)",
       "license": "Public Domain",
       "url": "https://raw.githubusercontent.com/adambom/dictionary/master/dictionary.json",
-      "entries": 61419,
+      "entries": 61416,
       "redistributed": true
     },
     "gcide": {
       "name": "GCIDE (Webster 1913 public domain portion)",
       "license": "Public Domain (Webster 1913 content only)",
       "url": "https://gcide.gnu.org.ua/",
-      "entries": 39564,
+      "entries": 39565,
       "note": "Only entries sourced from '1913 Webster' are used",
       "redistributed": true
     },
@@ -28,14 +28,14 @@
       "name": "Century Dictionary (1889-1911)",
       "license": "Public Domain",
       "url": "https://github.com/hupong/century-dictionary",
-      "entries": 137351,
+      "entries": 137349,
       "redistributed": true
     },
     "chambers1908": {
       "name": "Chambers's Twentieth Century Dictionary (1908)",
       "license": "Public Domain (USA / Project Gutenberg)",
       "url": "https://www.gutenberg.org/ebooks/37683",
-      "entries": 29953,
+      "entries": 29954,
       "note": "Definitions redistributed; etymology used build-time only.",
       "redistributed": true
     },
@@ -51,6 +51,20 @@
       "license": "Public Domain",
       "url": "https://raw.githubusercontent.com/elitejake/Moby-Project/main/Moby%20Words%20II/COMMON.TXT",
       "note": "Build-time quality signal (cross-dictionary word coverage). Not redistributed.",
+      "redistributed": false
+    },
+    "allens_synonyms": {
+      "name": "Allen's Synonyms and Antonyms (F. Sturges Allen, 1920)",
+      "license": "Public Domain (pre-1924 US; Project Gutenberg #51155)",
+      "url": "https://www.gutenberg.org/files/51155/51155-0.txt",
+      "note": "Synonym word-lists merged into s[] plus a cross-source coverage signal.",
+      "redistributed": true
+    },
+    "cmudict": {
+      "name": "CMU Pronouncing Dictionary",
+      "license": "BSD-2-Clause (CMU)",
+      "url": "https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict",
+      "note": "Build-time cross-source coverage signal (headword existence). No text redistributed.",
       "redistributed": false
     },
     "wiktionary": {

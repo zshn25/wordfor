@@ -1,5 +1,7 @@
 # WordFor: A reverse dictionary that runs entirely in your browser
 
+[![build-desktop](https://github.com/zshn25/wordfor/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/zshn25/wordfor/actions/workflows/build-desktop.yml)
+
 ![wordfor](wordfor.gif)
 
 **A free, private reverse dictionary using sentence embeddings, 1-bit quantization, and static model inference - zero server-side compute.**
