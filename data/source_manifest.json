@@ -13,16 +13,18 @@
     "llm_augmented": 10,
     "moby_extra": 11,
     "moby_thesaurus": 12,
-    "oed1_fascicles": 13,
-    "oewn": 14,
-    "onelook": 15,
-    "open_rogets": 16,
-    "opted": 17,
-    "reta_vortaro": 18,
-    "roget1911_pg": 19,
-    "vulgar_tongue_1811": 20,
-    "webster1913": 21,
-    "wiktionary": 22
+    "mongodb_defs": 13,
+    "oed1_fascicles": 14,
+    "oewn": 15,
+    "onelook": 16,
+    "open_rogets": 17,
+    "opengloss": 18,
+    "opted": 19,
+    "reta_vortaro": 20,
+    "roget1911_pg": 21,
+    "vulgar_tongue_1811": 22,
+    "webster1913": 23,
+    "wiktionary": 24
   },
   "sources": {
     "oewn": {
@@ -73,6 +75,20 @@
       "redistribute_text": true,
       "default_visible": true,
       "attribution_required": false
+    },
+    "opengloss": {
+      "name": "OpenGloss v1.3 Dictionary",
+      "license": "CC BY 4.0",
+      "redistribute_text": true,
+      "default_visible": true,
+      "attribution_required": true
+    },
+    "mongodb_defs": {
+      "name": "MongoDB English Words Definitions",
+      "license": "Apache-2.0",
+      "redistribute_text": true,
+      "default_visible": true,
+      "attribution_required": true
     },
     "edd": {
       "name": "English Dialect Dictionary / EDD Online",
